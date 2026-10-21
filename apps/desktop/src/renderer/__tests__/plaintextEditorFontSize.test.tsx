@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { createElement } from 'react';
-import { cleanup, fireEvent, render } from '@testing-library/react';
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { EditorView } from '@codemirror/view';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -19,7 +19,7 @@ afterEach(() => {
 });
 
 describe('PlaintextEditor font-size shortcuts', () => {
-  it('changes only the editor override and persists the new size', () => {
+  it('changes only the editor override and persists the new size', async () => {
     const setPatch = vi.fn(async () => ({}));
     vi.stubGlobal('electronAPI', {
       appearanceSettings: { setPatch },
@@ -38,6 +38,46 @@ describe('PlaintextEditor font-size shortcuts', () => {
 
     expect(document.documentElement.style.getPropertyValue('--app-editor-font-size')).toBe('15px');
     expect(document.body.style.getPropertyValue('--app-editor-font-size')).toBe('15px');
-    expect(setPatch).toHaveBeenCalledWith({ editorFontSize: 15 });
+    await waitFor(() => expect(setPatch).toHaveBeenCalledWith({ editorFontSize: 15 }));
+  });
+
+  it('shrinks with the primary minus key', async () => {
+    const setPatch = vi.fn(async () => ({}));
+    vi.stubGlobal('electronAPI', {
+      appearanceSettings: { setPatch },
+      logToMain: vi.fn(),
+    });
+    const { container } = render(
+      createElement(PlaintextEditor, {
+        initialValue: 'const value = 1;',
+        language: 'typescript',
+      }),
+    );
+    const view = EditorView.findFromDOM(container.querySelector<HTMLElement>('.cm-editor')!)!;
+
+    fireEvent.keyDown(view.contentDOM, { key: '-', code: 'Minus', ctrlKey: true });
+
+    expect(document.documentElement.style.getPropertyValue('--app-editor-font-size')).toBe('13px');
+    await waitFor(() => expect(setPatch).toHaveBeenCalledWith({ editorFontSize: 13 }));
+  });
+
+  it('continues shrinking across rapid repeated presses', async () => {
+    const setPatch = vi.fn(async () => ({}));
+    vi.stubGlobal('electronAPI', {
+      appearanceSettings: { setPatch },
+      logToMain: vi.fn(),
+    });
+    const { container } = render(
+      createElement(PlaintextEditor, {
+        initialValue: 'const value = 1;',
+        language: 'typescript',
+      }),
+    );
+    const view = EditorView.findFromDOM(container.querySelector<HTMLElement>('.cm-editor')!)!;
+
+    fireEvent.keyDown(view.contentDOM, { key: '-', code: 'Minus', ctrlKey: true });
+    fireEvent.keyDown(view.contentDOM, { key: '-', code: 'Minus', ctrlKey: true });
+    expect(document.documentElement.style.getPropertyValue('--app-editor-font-size')).toBe('12px');
+    await waitFor(() => expect(setPatch).toHaveBeenLastCalledWith({ editorFontSize: 12 }));
   });
 });

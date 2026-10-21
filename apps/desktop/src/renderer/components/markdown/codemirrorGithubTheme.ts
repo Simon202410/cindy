@@ -214,6 +214,18 @@ function makeEditorTheme(c: typeof githubLightColors, isDark: boolean) {
         // gutter 自己 user-select: none,数字不会被选中复制
         userSelect: 'none',
       },
+      '.cm-minimap-gutter': {
+        paddingLeft: '0',
+        borderLeft: '1px solid var(--border-default)',
+      },
+      '.cm-minimap-overlay-container .cm-minimap-overlay': {
+        background: 'var(--text-primary)',
+        opacity: '0.12',
+      },
+      '.cm-minimap-overlay-container .cm-minimap-overlay:hover, .cm-minimap-overlay-container.cm-minimap-overlay-active .cm-minimap-overlay':
+        {
+          opacity: '0.2',
+        },
       '.cm-lineNumbers .cm-gutterElement': {
         // baseTheme 默认 padding: 0 3px 0 5px。这里改成 0 16px 0 0:
         //   - 右 16px = 数字到代码内容的视觉间距(再加上 cm-content padding-left

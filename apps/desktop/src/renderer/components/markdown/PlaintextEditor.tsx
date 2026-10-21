@@ -57,6 +57,7 @@ import {
 import { defaultKeymap, history, historyKeymap, indentWithTab, redo, undo } from '@codemirror/commands';
 import { syntaxHighlighting } from '@codemirror/language';
 import { SearchCursor } from '@codemirror/search';
+import { showMinimap } from '@replit/codemirror-minimap';
 
 import {
   clampAppearanceCodeSize,
@@ -191,6 +192,13 @@ export interface PlaintextEditorProps {
 // "大文件预览模式", 保留 CodeMirror 的滚动 + 编辑能力, 但不再做格式化。
 const LARGE_DOC_BYTES = 256 * 1024;       // 文档总字节阈值 (utf-16 char 近似)
 const LONG_LINE_CHARS = 5_000;            // 任一行超过这个字符数 → 关 wrap
+let pendingEditorFontSizeWrite: number | null = null;
+let editorFontSizeWriteRunning = false;
+
+const codeMinimap = showMinimap.compute(['doc'], () => ({
+  create: () => ({ dom: document.createElement('div') }),
+  showOverlay: 'mouse-over',
+}));
 
 function detectLargeDoc(doc: string): { largeDoc: boolean; longLine: boolean } {
   const largeDoc = doc.length > LARGE_DOC_BYTES;
@@ -1073,11 +1081,18 @@ function getSelectionText(view: EditorView): string | null {
 }
 
 function adjustEditorFontSize(view: EditorView, delta: -1 | 1): boolean {
-  const current = Number.parseFloat(getComputedStyle(view.contentDOM).fontSize);
+  const root = document.documentElement;
+  const rootOverride = Number.parseFloat(
+    root.style.getPropertyValue('--app-editor-font-size'),
+  );
+  const savedOverride = Number.parseFloat(
+    String(window.electronAPI?.appearanceSettings?.getSync?.().editorFontSize ?? ''),
+  );
+  const computed = Number.parseFloat(getComputedStyle(view.contentDOM).fontSize);
+  const current = [rootOverride, savedOverride, computed].find(Number.isFinite);
   const next = clampAppearanceCodeSize(
     (Number.isFinite(current) ? current : DEFAULT_APPEARANCE_SETTINGS.codeSize) + delta,
   );
-  const root = document.documentElement;
   const previous = root.style.getPropertyValue('--app-editor-font-size');
   const apply = (value: string | null) => {
     for (const target of [root, document.body]) {
@@ -1086,18 +1101,35 @@ function adjustEditorFontSize(view: EditorView, delta: -1 | 1): boolean {
     }
   };
   apply(`${next}px`);
-  const persist = window.electronAPI?.appearanceSettings?.setPatch;
-  if (persist) {
-    void persist({ editorFontSize: next }).catch((error: unknown) => {
-      apply(previous || null);
-      window.electronAPI?.logToMain?.(
-        'error',
-        'renderer/plaintext-editor',
-        `editor font size persist failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    });
-  }
+  persistEditorFontSize(next, () => apply(previous || null));
   return true;
+}
+
+function persistEditorFontSize(next: number, rollback: () => void): void {
+  pendingEditorFontSizeWrite = next;
+  if (editorFontSizeWriteRunning) return;
+  editorFontSizeWriteRunning = true;
+  queueMicrotask(() => {
+    void (async () => {
+      while (pendingEditorFontSizeWrite !== null) {
+        const value = pendingEditorFontSizeWrite;
+        pendingEditorFontSizeWrite = null;
+        const persist = window.electronAPI?.appearanceSettings?.setPatch;
+        if (!persist) continue;
+        try {
+          await persist({ editorFontSize: value });
+        } catch (error: unknown) {
+          if (pendingEditorFontSizeWrite === null) rollback();
+          window.electronAPI?.logToMain?.(
+            'error',
+            'renderer/plaintext-editor',
+            `editor font size persist failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+      editorFontSizeWriteRunning = false;
+    })();
+  });
 }
 
 export const PlaintextEditor = forwardRef<PlaintextEditorHandle, PlaintextEditorProps>(
@@ -1347,25 +1379,26 @@ export const PlaintextEditor = forwardRef<PlaintextEditorHandle, PlaintextEditor
             run: (view) => adjustEditorFontSize(view, 1),
           },
           {
-            key: 'Mod-Shift-=',
+            key: 'Mod-+',
             run: (view) => adjustEditorFontSize(view, 1),
           },
           {
-            key: 'Mod-NumpadAdd',
+            key: 'Mod-Shift-+',
             run: (view) => adjustEditorFontSize(view, 1),
           },
           {
-            key: 'Mod-Minus',
+            key: 'Mod--',
             run: (view) => adjustEditorFontSize(view, -1),
           },
           {
-            key: 'Mod-NumpadSubtract',
+            key: 'Mod-Subtract',
             run: (view) => adjustEditorFontSize(view, -1),
           },
         ])),
         keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
         ...(initialConfig.skipWrap ? [] : [EditorView.lineWrapping]),
         ...(initialConfig.useCodeChrome ? [lineNumbers()] : []),
+        ...(initialConfig.useCodeChrome ? [codeMinimap] : []),
         ...(initialConfig.useCodeChrome ? [hexColorPreviewPlugin] : []),
         ...(initialConfig.useCodeChrome ? [gitChangedLinesField] : []),
         ...highlightExtensions,
