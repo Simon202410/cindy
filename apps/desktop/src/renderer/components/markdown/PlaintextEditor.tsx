@@ -195,11 +195,6 @@ const LONG_LINE_CHARS = 5_000;            // 任一行超过这个字符数 → 
 let pendingEditorFontSizeWrite: number | null = null;
 let editorFontSizeWriteRunning = false;
 
-const codeMinimap = showMinimap.compute(['doc'], () => ({
-  create: () => ({ dom: document.createElement('div') }),
-  showOverlay: 'mouse-over',
-}));
-
 function detectLargeDoc(doc: string): { largeDoc: boolean; longLine: boolean } {
   const largeDoc = doc.length > LARGE_DOC_BYTES;
   // 只在 largeDoc 命中时才做 longLine 扫描, 避免对小文件白扫一遍。
@@ -273,6 +268,121 @@ const gitChangedLinesField = StateField.define<DecorationSet>({
   },
   provide: (field) => EditorView.decorations.from(field),
 });
+
+function createCodeMinimap(changedLineColor: string) {
+  return showMinimap.compute([gitChangedLinesField], (state) => {
+    const gutter: Record<number, string> = {};
+    state.field(gitChangedLinesField).between(0, state.doc.length, (from) => {
+      gutter[state.doc.lineAt(from).number] = changedLineColor;
+    });
+    return {
+      create: () => {
+        const dom = document.createElement('div');
+        const labels = document.createElement('div');
+        labels.className = 'cm-minimap-mark-labels';
+        dom.appendChild(labels);
+        return { dom };
+      },
+      showOverlay: 'mouse-over',
+      gutters: Object.keys(gutter).length > 0 ? [gutter] : [],
+    };
+  });
+}
+
+type MinimapMark = { line: number; label: string };
+const MINIMAP_MARK_RE = /^\s*\/\/\s*MARK\s*[:：]\s*-?\s*(.+?)\s*$/i;
+const MINIMAP_SCALE = 4;
+
+export function parseMinimapMarkLabel(lineText: string): string | null {
+  return MINIMAP_MARK_RE.exec(lineText)?.[1].trim().slice(0, 80) || null;
+}
+
+function collectMinimapMarks(view: EditorView): MinimapMark[] {
+  const marks: MinimapMark[] = [];
+  for (let lineNumber = 1; lineNumber <= view.state.doc.lines; lineNumber += 1) {
+    const label = parseMinimapMarkLabel(view.state.doc.line(lineNumber).text);
+    if (label) marks.push({ line: lineNumber, label });
+  }
+  return marks;
+}
+
+function getMinimapMarkTop(view: EditorView, lineNumber: number): number | null {
+  const canvas = view.dom.querySelector<HTMLCanvasElement>('.cm-minimap-inner canvas');
+  const canvasHeight =
+    Number.parseFloat(canvas?.style.height ?? '') || canvas?.getBoundingClientRect().height;
+  if (!canvasHeight) return null;
+  const contentStyle = getComputedStyle(view.contentDOM);
+  const lineHeight =
+    (Number.parseFloat(contentStyle.lineHeight) ||
+      Number.parseFloat(contentStyle.fontSize) * 1.5) /
+    MINIMAP_SCALE;
+  if (!Number.isFinite(lineHeight) || lineHeight <= 0) return null;
+  const { clientHeight, scrollHeight, scrollTop } = view.scrollDOM;
+  const scrollPercent =
+    scrollHeight > clientHeight ? scrollTop / (scrollHeight - clientHeight) : 0;
+  const paddingTop = view.documentPadding.top / MINIMAP_SCALE;
+  const paddingBottom = view.documentPadding.bottom / MINIMAP_SCALE;
+  const totalHeight = paddingTop + paddingBottom + view.state.doc.lines * lineHeight;
+  const canvasTop = Math.max(0, scrollPercent * (totalHeight - canvasHeight));
+  const offsetTop = Math.max(0, paddingTop - canvasTop);
+  const startIndex = Math.round(Math.max(0, canvasTop - paddingTop) / lineHeight);
+  const endIndex = startIndex + Math.round((canvasHeight - offsetTop) / lineHeight);
+  if (lineNumber <= startIndex || lineNumber > endIndex) return null;
+  return Math.max(6, Math.min(canvasHeight - 6, offsetTop + (lineNumber - 1) * lineHeight));
+}
+
+class MinimapMarkLabels {
+  private readonly resizeObserver: ResizeObserver | null;
+  private marks: MinimapMark[];
+  private frame: number | null = null;
+
+  constructor(private readonly view: EditorView) {
+    this.marks = collectMinimapMarks(view);
+    view.scrollDOM.addEventListener('scroll', this.schedule, { passive: true });
+    this.resizeObserver =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(() => this.schedule());
+    this.resizeObserver?.observe(view.dom);
+    this.schedule();
+  }
+
+  update(update: ViewUpdate) {
+    if (update.docChanged) this.marks = collectMinimapMarks(update.view);
+    if (update.docChanged || update.geometryChanged) this.schedule();
+  }
+
+  destroy() {
+    this.view.scrollDOM.removeEventListener('scroll', this.schedule);
+    this.resizeObserver?.disconnect();
+    if (this.frame !== null) window.cancelAnimationFrame(this.frame);
+  }
+
+  private readonly schedule = () => {
+    if (this.frame !== null) return;
+    this.frame = window.requestAnimationFrame(() => {
+      this.frame = null;
+      this.render();
+    });
+  };
+
+  private render() {
+    const layer = this.view.dom.querySelector<HTMLElement>('.cm-minimap-mark-labels');
+    if (!layer) return;
+    layer.replaceChildren();
+    for (const mark of this.marks) {
+      const top = getMinimapMarkTop(this.view, mark.line);
+      if (top === null) continue;
+      const label = document.createElement('div');
+      label.className = 'cm-minimap-mark-label';
+      label.textContent = mark.label;
+      label.style.top = `${top}px`;
+      layer.appendChild(label);
+    }
+  }
+}
+
+const minimapMarkLabels = ViewPlugin.fromClass(MinimapMarkLabels);
 
 class HexColorWidget extends WidgetType {
   constructor(private readonly color: string) {
@@ -1357,6 +1467,10 @@ export const PlaintextEditor = forwardRef<PlaintextEditorHandle, PlaintextEditor
               syntaxHighlighting(isDarkMode ? githubDarkHighlight : githubLightHighlight),
             ]
           : [];
+      const changedLineColor =
+        getComputedStyle(document.documentElement).getPropertyValue('--diff-add-fg').trim() ||
+        '#22863a';
+      const codeMinimap = createCodeMinimap(changedLineColor);
       // 按降级 flag + chrome 模式拼 extension 列表:
       //   - skipWrap → 不挂 lineWrapping。
       //   - skipHighlight 或没有 parser → 不挂 langExtension + syntaxHighlighting,
@@ -1398,7 +1512,7 @@ export const PlaintextEditor = forwardRef<PlaintextEditorHandle, PlaintextEditor
         keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
         ...(initialConfig.skipWrap ? [] : [EditorView.lineWrapping]),
         ...(initialConfig.useCodeChrome ? [lineNumbers()] : []),
-        ...(initialConfig.useCodeChrome ? [codeMinimap] : []),
+        ...(initialConfig.useCodeChrome ? [codeMinimap, minimapMarkLabels] : []),
         ...(initialConfig.useCodeChrome ? [hexColorPreviewPlugin] : []),
         ...(initialConfig.useCodeChrome ? [gitChangedLinesField] : []),
         ...highlightExtensions,

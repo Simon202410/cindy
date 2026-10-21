@@ -226,6 +226,32 @@ function makeEditorTheme(c: typeof githubLightColors, isDark: boolean) {
         {
           opacity: '0.2',
         },
+      '.cm-minimap-mark-labels': {
+        position: 'absolute',
+        inset: '0',
+        overflow: 'hidden',
+        pointerEvents: 'none',
+        zIndex: '2',
+      },
+      '.cm-minimap-mark-label': {
+        position: 'absolute',
+        right: '5px',
+        maxWidth: 'calc(100% - 10px)',
+        padding: '0 4px',
+        border: '1px solid var(--border-default)',
+        borderRadius: '4px',
+        background: 'var(--card)',
+        boxSizing: 'border-box',
+        color: 'var(--text-secondary)',
+        fontFamily: UI_FONT_STACK,
+        fontSize: '10px',
+        fontWeight: '500',
+        lineHeight: '12px',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        transform: 'translateY(-50%)',
+        whiteSpace: 'nowrap',
+      },
       '.cm-lineNumbers .cm-gutterElement': {
         // baseTheme 默认 padding: 0 3px 0 5px。这里改成 0 16px 0 0:
         //   - 右 16px = 数字到代码内容的视觉间距(再加上 cm-content padding-left

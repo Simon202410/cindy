@@ -3,9 +3,10 @@
 import { createElement } from 'react';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { EditorView } from '@codemirror/view';
+import { showMinimap } from '@replit/codemirror-minimap';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { PlaintextEditor } from '@/components/markdown/PlaintextEditor';
+import { parseMinimapMarkLabel, PlaintextEditor } from '@/components/markdown/PlaintextEditor';
 
 vi.mock('react-i18next', () => {
   const t = (key: string) => key;
@@ -21,6 +22,12 @@ afterEach(() => {
 // CodeMirror widget → 浮动面板 → dispatch 的生产路径。最小失败输入是点击
 // #ECF2F8 色块后把 hex 改成 #112233，文档未回写即失败。tier: unit。
 describe('PlaintextEditor integrated decorations', () => {
+  it('extracts the visible name from MARK comments', () => {
+    expect(parseMinimapMarkLabel('// MARK: 色彩定义')).toBe('色彩定义');
+    expect(parseMinimapMarkLabel('  //MARK：- 网络层')).toBe('网络层');
+    expect(parseMinimapMarkLabel('// regular comment')).toBeNull();
+  });
+
   it('opens from the swatch and writes the picked hex back to the document', () => {
     vi.useFakeTimers({
       toFake: ['requestAnimationFrame', 'cancelAnimationFrame'],
@@ -76,6 +83,8 @@ describe('PlaintextEditor integrated decorations', () => {
     const changed = container.querySelectorAll('.cm-git-changed-line');
     expect(changed).toHaveLength(1);
     expect(changed[0].textContent).toBe('two');
+    const view = EditorView.findFromDOM(container.querySelector<HTMLElement>('.cm-editor')!)!;
+    expect(view.state.facet(showMinimap)?.gutters).toEqual([{ 2: expect.any(String) }]);
   });
 
   it('keeps CodeMirror undo and redo shortcuts active', () => {
