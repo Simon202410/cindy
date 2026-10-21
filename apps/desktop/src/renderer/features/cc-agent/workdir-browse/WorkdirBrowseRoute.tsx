@@ -185,12 +185,25 @@ function WorkdirBrowseContent() {
   }, [sessionsHook.sessions, browsableWorkdir, currentSession]);
 
   const selectedPath = searchParams.get('file');
-  const { content, setLocal: setLocalContent } = useFileContent(browsableWorkdir, selectedPath, remoteHostId, deviceId);
+  const {
+    content,
+    refresh: refreshContent,
+    setLocal: setLocalContent,
+  } = useFileContent(browsableWorkdir, selectedPath, remoteHostId, deviceId);
   const gitChanges = useWorkdirGitChanges(sessionId, browsableWorkdir, deviceId);
   const changedLines = selectedPath ? gitChanges.changedLines.get(selectedPath) : undefined;
   useEffect(() => {
     if (content.kind === 'text') gitChanges.scheduleRefresh();
   }, [content, gitChanges.scheduleRefresh]);
+  useEffect(() => {
+    const onReverted = (event: Event) => {
+      if ((event as CustomEvent<{ workdir?: string }>).detail?.workdir !== browsableWorkdir) return;
+      refreshContent();
+      gitChanges.refresh();
+    };
+    window.addEventListener('workdir-files-reverted', onReverted);
+    return () => window.removeEventListener('workdir-files-reverted', onReverted);
+  }, [browsableWorkdir, gitChanges.refresh, refreshContent]);
   const rail = useChatRailResize();
   const railCollapse = useChatRailCollapsed();
   const activeSessionIsOrcaLead = Boolean(currentSession && isOrcaLeadSession(currentSession));

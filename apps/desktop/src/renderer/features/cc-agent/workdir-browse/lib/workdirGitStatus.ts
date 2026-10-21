@@ -7,6 +7,7 @@ export type WorkdirGitStatusKind =
 
 export interface WorkdirGitFileChange {
   path: string;
+  oldPath: string | null;
   kind: WorkdirGitStatusKind;
   staged: boolean;
   unstaged: boolean;
@@ -65,6 +66,7 @@ export function buildWorkdirGitMaps(data: ReviewData, workdir: string): WorkdirG
     const kind = fileStatusKind(file);
     files.set(path, {
       path,
+      oldPath: file.oldPath,
       kind,
       staged: file.sources.includes('staged'),
       unstaged: file.sources.includes('unstaged'),

@@ -62,6 +62,7 @@ import { useRevealFileInTree } from '@/features/cc-agent/workdir-browse/hooks/us
 import { SearchPanel } from '@/features/cc-agent/workdir-browse/search/SearchPanel';
 import { useProjectSearch } from '@/features/cc-agent/workdir-browse/search/hooks/useProjectSearch';
 import { FileFilterInput } from '@/features/cc-agent/workdir-browse/FileFilterInput';
+import { ChangedFilesList } from '@/features/cc-agent/workdir-browse/ChangedFilesList';
 import { FilterResultList } from '@/features/cc-agent/workdir-browse/FilterResultList';
 import {
   FILTER_RESULT_LIMIT,
@@ -154,6 +155,7 @@ function FileBrowserBodyWithWorkdir({
   // 文件名筛选 query —— tree 模式下用,独立于内容搜索。空 query 显示文件树,有
   // 内容显示筛选结果列表。不持久化(关 tab 重开默认空)。
   const [filterQuery, setFilterQuery] = useState('');
+  const [showChanges, setShowChanges] = useState(false);
   // 项目级文件名扁平列表(走 ripgrep --files honor .gitignore),给文件名筛选用。
   // 缓存 30 秒,跨 tab 共享同 workdir 索引;tree.refresh 时同步 invalidate。
   // remote:daemon 内跑远端 rg;远端没有 rg 时返回空 + error,走"未索引"占位。
@@ -667,8 +669,40 @@ function FileBrowserBodyWithWorkdir({
             内部 `min-h-0 flex-1` 拿不到明确高度,FileTreeView 的 overflow-y-auto
             就滚不动了(2026-06-30 用户实测 bug)。 */}
         <div className={cn('flex min-h-0 flex-1 flex-col', mode !== 'tree' && 'hidden')}>
-          <FileFilterInput value={filterQuery} onChange={setFilterQuery} />
-          {filterQuery ? (
+          <FileFilterInput
+            value={filterQuery}
+            onChange={setFilterQuery}
+            changedOnly={showChanges}
+            onToggleChangedOnly={
+              ctx.sessionId ? () => setShowChanges((value) => !value) : undefined
+            }
+          />
+          {showChanges ? (
+            <ChangedFilesList
+              sessionId={ctx.sessionId}
+              deviceId={deviceId}
+              data={gitChanges.data}
+              changes={gitChanges.files}
+              query={filterQuery}
+              selectedPath={state.selectedFilePath}
+              loading={gitChanges.loading}
+              error={gitChanges.error}
+              onSelectFile={handleSelectFile}
+              onReverted={() => {
+                gitChanges.refresh();
+                void tree.refresh();
+                projectFiles.refresh();
+                fileContent.refresh();
+                if (ctx.sessionId) {
+                  window.dispatchEvent(
+                    new CustomEvent('workdir-files-reverted', {
+                      detail: { workdir: ctx.workdir },
+                    }),
+                  );
+                }
+              }}
+            />
+          ) : filterQuery ? (
             <FilterResultList
               files={filteredFiles}
               truncated={

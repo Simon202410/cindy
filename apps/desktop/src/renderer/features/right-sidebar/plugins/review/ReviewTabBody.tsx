@@ -3019,8 +3019,7 @@ export function DiffList({
     ? writeAction.pendingKey === writeAction.sectionDiscardPendingKey
     : false;
   const hasBatchActions = Boolean(
-    (writeAction?.sectionAction && writeAction.onSectionAction) ||
-    (writeAction?.sectionDiscardVisible && writeAction.onSectionDiscard),
+    writeAction?.sectionAction && writeAction.onSectionAction,
   );
   const eagerExpandedDiffRowCount = useMemo(
     () => countEagerExpandedDiffRows(diffs, expandedSet, viewMode),
@@ -3238,6 +3237,12 @@ export function DiffList({
         richMarkdownPreview={richMarkdownPreview}
         richMarkdownPreviewDisabledReason={richMarkdownPreviewDisabledReason}
         onRichMarkdownPreviewChange={onRichMarkdownPreviewChange}
+        onDiscardAll={
+          writeAction?.sectionDiscardVisible ? writeAction.onSectionDiscard : undefined
+        }
+        discardAllPending={discardAllPending}
+        discardAllDisabled={writeAction ? !writeAction.canWrite : true}
+        discardAllDisabledTooltip={writeAction?.disabledTooltip}
       />
       {topNotice && (
         <div className="shrink-0 border-b border-[var(--border-default)] bg-[var(--warning-bg-soft)] px-3 py-2 text-11 leading-relaxed text-[var(--text-secondary)]">
@@ -3298,7 +3303,6 @@ export function DiffList({
               <BatchActionPill
                 writeAction={writeAction}
                 allPending={allPending}
-                discardAllPending={discardAllPending}
                 layout={batchActionLayout}
               />
             )}
@@ -3536,12 +3540,10 @@ function ReviewFileTreeRow({
 export function BatchActionPill({
   writeAction,
   allPending,
-  discardAllPending,
   layout = 'full',
 }: {
   writeAction: WriteActionProps;
   allPending: boolean;
-  discardAllPending: boolean;
   layout?: BatchActionLayout;
 }) {
   const { t } = useTranslation();
@@ -3552,23 +3554,6 @@ export function BatchActionPill({
       className="pointer-events-none absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 overflow-hidden rounded-full border border-[var(--border-default)] bg-[color-mix(in_srgb,var(--surface-elevated)_92%,transparent)] p-1 shadow-[var(--shadow-menu)] backdrop-blur-sm"
       style={{ maxWidth: 'calc(100% - 16px)' }}
     >
-      {writeAction.sectionDiscardVisible && writeAction.onSectionDiscard && (
-        <ActionButton
-          label={t('rightSidebar.review.actions.discardAll')}
-          icon={<Undo2 size={12} />}
-          pending={discardAllPending}
-          disabled={!writeAction.canWrite || discardAllPending}
-          disabledTooltip={!writeAction.canWrite ? writeAction.disabledTooltip : undefined}
-          onClick={writeAction.onSectionDiscard}
-          quiet
-          className={cn(
-            'pointer-events-auto',
-            iconOnly &&
-              'border-transparent bg-transparent px-2 text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]',
-          )}
-          iconOnly={iconOnly}
-        />
-      )}
       {writeAction.sectionAction && writeAction.onSectionAction && (
         <ActionButton
           label={allActionLabel(writeAction.sectionAction, t)}
@@ -3600,6 +3585,10 @@ export function ReviewDiffListHeader({
   richMarkdownPreview,
   richMarkdownPreviewDisabledReason,
   onRichMarkdownPreviewChange,
+  onDiscardAll,
+  discardAllPending = false,
+  discardAllDisabled = false,
+  discardAllDisabledTooltip,
 }: {
   fileCount: number;
   branchBaseControl?: ReactNode;
@@ -3610,6 +3599,10 @@ export function ReviewDiffListHeader({
   richMarkdownPreview: boolean;
   richMarkdownPreviewDisabledReason?: string;
   onRichMarkdownPreviewChange: (richMarkdownPreview: boolean) => void;
+  onDiscardAll?: () => void;
+  discardAllPending?: boolean;
+  discardAllDisabled?: boolean;
+  discardAllDisabledTooltip?: string;
 }) {
   const { t } = useTranslation();
   const [rowEl, setRowEl] = useState<HTMLDivElement | null>(null);
@@ -3664,6 +3657,17 @@ export function ReviewDiffListHeader({
         data-testid="review-diff-list-header-actions"
         className="ml-auto flex shrink-0 items-center gap-1"
       >
+        {onDiscardAll && (
+          <ActionButton
+            label={t('rightSidebar.review.actions.discardAll')}
+            icon={<Undo2 size={12} />}
+            pending={discardAllPending}
+            disabled={discardAllDisabled || discardAllPending}
+            disabledTooltip={discardAllDisabledTooltip}
+            onClick={onDiscardAll}
+            iconOnly
+          />
+        )}
         <ReviewRefreshButton pending={refreshPending} onRefresh={onRefresh} />
         <RichMarkdownPreviewToggleButton
           enabled={richMarkdownPreview}

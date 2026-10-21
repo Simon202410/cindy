@@ -654,6 +654,27 @@ describe('ReviewTabBody diff list header', () => {
     expect(onRichMarkdownPreviewChange).toHaveBeenCalledWith(true);
   });
 
+  it('reverts all changes from the diff list header', () => {
+    const onDiscardAll = vi.fn();
+    render(
+      createElement(ReviewDiffListHeader, {
+        fileCount: 3,
+        refreshPending: false,
+        onRefresh: vi.fn(),
+        viewMode: 'unified',
+        onViewModeChange: vi.fn(),
+        richMarkdownPreview: false,
+        onRichMarkdownPreviewChange: vi.fn(),
+        onDiscardAll,
+      }),
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'rightSidebar.review.actions.discardAll' }),
+    );
+    expect(onDiscardAll).toHaveBeenCalledTimes(1);
+  });
+
   it('shows the branch base label from the measured row width, not the viewport width', () => {
     expect(shouldShowBranchBaseLabel(279, true)).toBe(false);
     expect(shouldShowBranchBaseLabel(REVIEW_BRANCH_BASE_LABEL_MIN_WIDTH_PX - 1, true)).toBe(false);
@@ -821,15 +842,11 @@ describe('ReviewTabBody hover-reveal action affordance', () => {
     const { container, rerender } = render(
       createElement(BatchActionPill, {
         allPending: false,
-        discardAllPending: false,
         writeAction: unstagedActions,
       }),
     );
 
     expect(container.querySelector('[data-review-batch-action-pill="true"]')).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: 'rightSidebar.review.actions.discardAll' }),
-    ).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'rightSidebar.review.actions.stageAll' }),
     ).toBeTruthy();
@@ -837,7 +854,6 @@ describe('ReviewTabBody hover-reveal action affordance', () => {
     rerender(
       createElement(BatchActionPill, {
         allPending: false,
-        discardAllPending: false,
         writeAction: stagedActions,
       }),
     );
@@ -870,7 +886,6 @@ describe('ReviewTabBody hover-reveal action affordance', () => {
     const { container } = render(
       createElement(BatchActionPill, {
         allPending: true,
-        discardAllPending: false,
         layout: 'icon-only',
         writeAction: unstagedActions,
       }),

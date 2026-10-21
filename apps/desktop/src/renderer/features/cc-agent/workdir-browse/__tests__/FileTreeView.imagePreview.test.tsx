@@ -152,6 +152,7 @@ describe('FileTreeView Git status decoration', () => {
               'src/a.ts',
               {
                 path: 'src/a.ts',
+                oldPath: null,
                 kind: 'modified',
                 staged: false,
                 unstaged: true,
@@ -168,4 +169,5 @@ describe('FileTreeView Git status decoration', () => {
     expect(screen.getAllByLabelText('ccAgent.workdirBrowse.gitStatus.modified')).toHaveLength(2);
     expect(screen.getByText('M').textContent).toBe('M');
   });
+
 });
