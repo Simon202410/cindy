@@ -35,6 +35,7 @@ function resetRootStyles() {
     target.style.removeProperty('--app-font-ui');
     target.style.removeProperty('--app-font-code');
     target.style.removeProperty('--app-code-font-size');
+    target.style.removeProperty('--app-editor-font-size');
     target.style.removeProperty('--app-ui-font-size');
     for (const tokenSize of [...UI_TEXT_TOKEN_SIZES, ...REMOVED_UI_TEXT_TOKEN_SIZES]) {
       target.style.removeProperty(`--text-${tokenSize}`);
@@ -58,6 +59,7 @@ describe('font settings', () => {
       codeFamily: '',
       uiSize: DEFAULT_UI_FONT_SIZE,
       codeSize: DEFAULT_CODE_FONT_SIZE,
+      editorFontSize: undefined,
     });
   });
 
@@ -72,6 +74,7 @@ describe('font settings', () => {
       codeFamily: '',
       uiSize: DEFAULT_UI_FONT_SIZE,
       codeSize: DEFAULT_CODE_FONT_SIZE,
+      editorFontSize: undefined,
     });
   });
 
@@ -131,6 +134,27 @@ describe('font settings', () => {
     }
     expect(rootStyle.getPropertyValue('--text-sm-line-height')).toBe('20px');
     expect(document.body.style.getPropertyValue('--text-sm-line-height')).toBe('20px');
+  });
+
+  it('applies and clears the editor-only font size override', () => {
+    applyFontSettings({
+      uiFamily: '',
+      codeFamily: '',
+      uiSize: DEFAULT_UI_FONT_SIZE,
+      codeSize: DEFAULT_CODE_FONT_SIZE,
+      editorFontSize: 18,
+    });
+    expect(document.documentElement.style.getPropertyValue('--app-editor-font-size')).toBe('18px');
+    expect(document.body.style.getPropertyValue('--app-editor-font-size')).toBe('18px');
+
+    applyFontSettings({
+      uiFamily: '',
+      codeFamily: '',
+      uiSize: DEFAULT_UI_FONT_SIZE,
+      codeSize: DEFAULT_CODE_FONT_SIZE,
+    });
+    expect(document.documentElement.style.getPropertyValue('--app-editor-font-size')).toBe('');
+    expect(document.body.style.getPropertyValue('--app-editor-font-size')).toBe('');
   });
 
   it('scales UI font-size tokens from uiSize', () => {

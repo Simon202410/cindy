@@ -12,6 +12,8 @@ export interface AppearanceOverrides {
   codeFamily?: string;
   uiSize?: number;
   codeSize?: number;
+  /** Editor-only font size override; omitted follows codeSize. */
+  editorFontSize?: number;
   windowZoom?: number;
   wallpaperId?: WallpaperId;
   wallpaperOverlay?: number;
@@ -40,6 +42,8 @@ export interface AppearanceSettings {
   codeFamily: string;
   uiSize: number;
   codeSize: number;
+  /** Editor-only font size override; omitted follows codeSize. */
+  editorFontSize?: number;
   windowZoom: number;
   wallpaperId: WallpaperId;
   wallpaperOverlay: number;
@@ -205,6 +209,9 @@ export function normalizeAppearanceSettings(raw: unknown): AppearanceSettings {
       typeof value.codeSize === 'number'
         ? clampAppearanceCodeSize(value.codeSize)
         : DEFAULT_APPEARANCE_SETTINGS.codeSize,
+    ...(typeof value.editorFontSize === 'number' && Number.isFinite(value.editorFontSize)
+      ? { editorFontSize: clampAppearanceCodeSize(value.editorFontSize) }
+      : {}),
     windowZoom:
       typeof value.windowZoom === 'number'
         ? clampAppearanceWindowZoom(value.windowZoom)

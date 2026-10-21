@@ -201,7 +201,7 @@ describe('sidebarWindowPreload 椤跺眰濂戠害', () => {
       'create', 'write', 'resize', 'dispose', 'restart', 'onData', 'onExit',
     ]));
     expect(gitReviewKeys).toEqual(expect.arrayContaining([
-      'get', 'summary', 'commits', 'commitDiff', 'branchDiff', 'fileDiff', 'imagePreview',
+      'get', 'commitMessage', 'summary', 'commits', 'commitDiff', 'branchDiff', 'fileDiff', 'imagePreview',
       'markdownPreview', 'openFile', 'stageFile', 'unstageFile', 'discardFile', 'stageHunk',
       'unstageHunk', 'discardHunk', 'stageAll', 'unstageAll', 'discardAll', 'commit', 'push',
     ]));

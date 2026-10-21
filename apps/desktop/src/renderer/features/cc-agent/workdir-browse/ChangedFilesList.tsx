@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Undo2 } from 'lucide-react';
+import { Sparkles, Undo2 } from 'lucide-react';
 
+import { Button } from '@/components/ui/button';
 import { Tip } from '@/components/ui/tooltip';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog-provider';
 import { Spinner } from '@/components/ui/spinner';
@@ -13,6 +14,7 @@ import type {
 } from '@/lib/gitReview.types';
 import { toast } from '@/lib/toast';
 import { extractIpcError } from '@/utils/ipcError';
+import { buildDeterministicCommitMessage } from '../../../../shared/gitCommitMessage';
 import { filterFiles } from './lib/filterFiles';
 import { pickFileIcon } from './lib/fileIcon';
 import {
@@ -30,7 +32,7 @@ export function ChangedFilesList({
   loading,
   error,
   onSelectFile,
-  onReverted,
+  onGitStateChanged,
 }: {
   sessionId: string | null | undefined;
   deviceId: string | null;
@@ -41,17 +43,26 @@ export function ChangedFilesList({
   loading: boolean;
   error: string | null;
   onSelectFile: (relPath: string) => void;
-  onReverted: () => void;
+  onGitStateChanged: () => void;
 }) {
   const { t } = useTranslation();
   const { confirm } = useConfirmDialog();
   const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const [autoPush, setAutoPush] = useState(false);
+  const [committing, setCommitting] = useState(false);
+  const [generatingMessage, setGeneratingMessage] = useState(false);
+  const deterministicMessage = useMemo(() => buildDeterministicCommitMessage(data), [data]);
+  const [commitMessage, setCommitMessage] = useState(deterministicMessage);
+  const commitMessageDirtyRef = useRef(false);
+  useEffect(() => {
+    if (!commitMessageDirtyRef.current) setCommitMessage(deterministicMessage);
+  }, [deterministicMessage]);
   const paths = useMemo(() => [...changes.keys()].sort(), [changes]);
   const visiblePaths = useMemo(
     () => (query.trim() ? filterFiles(query, paths, 1_000) : paths),
     [paths, query],
   );
-  const canRevert = Boolean(
+  const canWrite = Boolean(
     sessionId &&
       !deviceId &&
       data &&
@@ -59,7 +70,7 @@ export function ChangedFilesList({
   );
 
   const revert = async (targets: ReviewFileTarget[], key: string, scope: 'file' | 'section') => {
-    if (!sessionId || targets.length === 0 || !canRevert) return;
+    if (!sessionId || targets.length === 0 || !canWrite) return;
     const count = scope === 'file' ? 1 : changes.size;
     const untrackedCount = targets.filter(
       (target) => changes.get(target.path)?.kind === 'untracked',
@@ -93,12 +104,81 @@ export function ChangedFilesList({
           }),
         );
       }
-      onReverted();
+      onGitStateChanged();
     } catch (err) {
       const message = extractIpcError(err)?.message ?? String(err);
       toast.error(message);
     } finally {
       setPendingKey(null);
+    }
+  };
+
+  const generateAiMessage = async () => {
+    if (!sessionId || !canWrite || generatingMessage) return;
+    setGeneratingMessage(true);
+    try {
+      const draft = await window.electronAPI.gitReview.commitMessage({ sessionId });
+      commitMessageDirtyRef.current = true;
+      setCommitMessage(draft.message);
+      if (draft.source === 'fallback') {
+        toast.warning(t('rightSidebar.fileBrowser.aiCommitFallback'));
+      }
+    } catch (err) {
+      toast.error(extractIpcError(err)?.message ?? String(err));
+    } finally {
+      setGeneratingMessage(false);
+    }
+  };
+
+  const commitChanges = async () => {
+    const message = commitMessage.trim();
+    if (!sessionId || !canWrite || changes.size === 0 || committing || !message) return;
+    setCommitting(true);
+    let committed = false;
+    try {
+      const result = await window.electronAPI.gitReview.commit({
+        sessionId,
+        message,
+        includeUnstaged: true,
+      });
+      committed = true;
+      commitMessageDirtyRef.current = false;
+      onGitStateChanged();
+      toast.success(
+        t('rightSidebar.fileBrowser.commitSuccess', { oid: result.commitOid.slice(0, 8) }),
+      );
+      if (!autoPush) return;
+
+      let pushResult = await window.electronAPI.gitReview.push({ sessionId });
+      if (pushResult.kind === 'needs-force') {
+        const confirmed = await confirm({
+          title: t('rightSidebar.review.push.forceTitle'),
+          description: t('rightSidebar.review.push.forceDesc', {
+            count: pushResult.behind,
+            remoteRef: pushResult.remoteRef,
+          }),
+          confirmText: t('rightSidebar.review.push.forceConfirm'),
+          cancelText: t('rightSidebar.review.push.forceCancel'),
+        });
+        if (!confirmed) return;
+        pushResult = await window.electronAPI.gitReview.push({
+          sessionId,
+          confirmForce: {
+            remoteRef: pushResult.remoteRef,
+            expectedOid: pushResult.remoteOid,
+          },
+        });
+        if (pushResult.kind === 'needs-force') {
+          throw new Error(t('rightSidebar.review.push.forceStillRejected'));
+        }
+      }
+      toast.success(t('rightSidebar.review.push.successToast'));
+      onGitStateChanged();
+    } catch (err) {
+      const message = extractIpcError(err)?.message ?? String(err);
+      toast.error(committed ? `${t('rightSidebar.review.push.failedTitle')}: ${message}` : message);
+    } finally {
+      setCommitting(false);
     }
   };
 
@@ -116,7 +196,13 @@ export function ChangedFilesList({
           <button
             type="button"
             aria-label={t('rightSidebar.review.actions.discardAll')}
-            disabled={!canRevert || changes.size === 0 || pendingKey !== null}
+            disabled={
+              !canWrite ||
+              changes.size === 0 ||
+              pendingKey !== null ||
+              committing ||
+              generatingMessage
+            }
             onClick={() => {
               const targets = [...changes.values()].flatMap(targetsForChange);
               void revert(targets, 'all', 'section');
@@ -176,7 +262,9 @@ export function ChangedFilesList({
                   <button
                     type="button"
                     aria-label={t('rightSidebar.review.actions.discard')}
-                    disabled={!canRevert || pendingKey !== null}
+                    disabled={
+                      !canWrite || pendingKey !== null || committing || generatingMessage
+                    }
                     onClick={(event) => {
                       event.stopPropagation();
                       void revert(targetsForChange(change), rowKey, 'file');
@@ -195,6 +283,57 @@ export function ChangedFilesList({
             {t('rightSidebar.fileBrowser.changedOnlyEmpty')}
           </div>
         )}
+      </div>
+      <div className="shrink-0 border-t border-[var(--border-default)] px-3 py-2">
+        <textarea
+          value={commitMessage}
+          onChange={(event) => {
+            commitMessageDirtyRef.current = true;
+            setCommitMessage(event.target.value);
+          }}
+          aria-label={t('rightSidebar.fileBrowser.commitMessage')}
+          placeholder={t('rightSidebar.fileBrowser.commitMessagePlaceholder')}
+          rows={4}
+          disabled={!canWrite || committing || generatingMessage}
+          className="min-h-[76px] w-full resize-none rounded-[8px] border border-[var(--border-default)] bg-[var(--surface-elevated)] px-2.5 py-2 text-11 leading-relaxed text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring-soft)] disabled:opacity-60"
+        />
+        <label className="mb-2 flex cursor-pointer items-center gap-2 text-11 text-[var(--text-secondary)]">
+          <input
+            type="checkbox"
+            checked={autoPush}
+            disabled={!canWrite || committing || generatingMessage}
+            onChange={(event) => setAutoPush(event.target.checked)}
+            className="size-3.5 shrink-0 accent-[var(--accent-cta-bg-pure)]"
+          />
+          <span>{t('rightSidebar.fileBrowser.autoPush')}</span>
+        </label>
+        <div className="mt-1.5 flex items-center gap-1.5">
+          <Button
+            variant="secondary"
+            size="xs"
+            compact
+            type="button"
+            aria-label={t('rightSidebar.fileBrowser.aiCommitSummary')}
+            loading={generatingMessage}
+            disabled={!canWrite || changes.size === 0}
+            onClick={() => void generateAiMessage()}
+          >
+            <Sparkles size={11} />
+            <span>{t('rightSidebar.fileBrowser.aiCommitSummary')}</span>
+          </Button>
+          <Button
+            variant="cta"
+            size="sm"
+            className="min-w-0 flex-1"
+            type="button"
+            aria-label={t('rightSidebar.fileBrowser.commitToGithub')}
+            loading={committing}
+            disabled={!canWrite || changes.size === 0 || !commitMessage.trim() || generatingMessage}
+            onClick={() => void commitChanges()}
+          >
+            {t('rightSidebar.fileBrowser.commitToGithub')}
+          </Button>
+        </div>
       </div>
     </div>
   );

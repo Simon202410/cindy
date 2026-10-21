@@ -1,17 +1,19 @@
 // @vitest-environment jsdom
 
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ReviewData, ReviewFileTarget } from '@/lib/gitReview.types';
+import { buildDeterministicCommitMessage } from '../../../../../shared/gitCommitMessage';
 import { ChangedFilesList } from '../ChangedFilesList';
 import type { WorkdirGitFileChange } from '../lib/workdirGitStatus';
 
+const confirm = vi.fn(async () => true);
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 vi.mock('@/components/ui/confirm-dialog-provider', () => ({
-  useConfirmDialog: () => ({ confirm: async () => true }),
+  useConfirmDialog: () => ({ confirm }),
 }));
 vi.mock('@/components/ui/tooltip', () => ({
   Tip: ({ children }: { children: React.ReactNode }) => children,
@@ -37,12 +39,12 @@ const unstageAll = vi.fn(
         status: {
           files: [
             {
-              path: 'src/a.ts',
+              path: 'apps/desktop/src/a.ts',
               oldPath: null,
               sources: ['unstaged'],
             },
             {
-              path: 'new.ts',
+              path: 'apps/desktop/new.ts',
               oldPath: null,
               sources: ['unstaged'],
             },
@@ -67,13 +69,43 @@ const discardAll = vi.fn(
     };
   },
 );
+const commit = vi.fn(
+  async (_params: { sessionId: string; message: string; includeUnstaged?: boolean }) => {
+    void _params;
+    return {
+      data: {} as ReviewData,
+      commitOid: '1234567890abcdef',
+      stdout: '',
+      stderr: '',
+    };
+  },
+);
+const commitMessage = vi.fn(async (_params: { sessionId: string }) => {
+  void _params;
+  return {
+    message: 'feat(desktop): 增加 AI 提交信息总结\n\n- 根据代码差异生成提交说明',
+    source: 'ai' as const,
+  };
+});
+const push = vi.fn(async (_params: { sessionId: string }) => {
+  void _params;
+  return {
+    kind: 'pushed' as const,
+    data: {} as ReviewData,
+    remote: 'origin',
+    remoteRef: 'main',
+    stdout: '',
+    stderr: '',
+    aheadBehind: { ahead: 0, behind: 0, upstream: 'origin/main', stale: false },
+  };
+});
 
 function renderList() {
   const changes = new Map<string, WorkdirGitFileChange>([
     [
-      'src/a.ts',
+      'apps/desktop/src/a.ts',
       {
-        path: 'src/a.ts',
+        path: 'apps/desktop/src/a.ts',
         oldPath: null,
         kind: 'modified',
         staged: true,
@@ -81,9 +113,9 @@ function renderList() {
       },
     ],
     [
-      'new.ts',
+      'apps/desktop/new.ts',
       {
-        path: 'new.ts',
+        path: 'apps/desktop/new.ts',
         oldPath: null,
         kind: 'untracked',
         staged: false,
@@ -91,61 +123,98 @@ function renderList() {
       },
     ],
   ]);
-  const onReverted = vi.fn();
-  render(
+  const onGitStateChanged = vi.fn();
+  const data = {
+    scope: {
+      sessionId: 'session-1',
+      workdir: '/repo',
+      worktreePath: '/repo',
+      workingDir: '/repo',
+      repoRoot: '/repo',
+      branch: 'main',
+      headOid: null,
+      isDetached: false,
+      isUnborn: false,
+      source: 'worktree',
+      aheadBehind: { ahead: 0, behind: 0, upstream: null, stale: false },
+      disabledReason: null,
+      disabledMessage: null,
+      resolutionChain: [],
+    },
+    status: {
+      scope: {} as never,
+      files: [
+        {
+          path: 'apps/desktop/src/a.ts',
+          oldPath: null,
+          indexStatus: 'modified',
+          worktreeStatus: 'modified',
+          isUntracked: false,
+          isUnmerged: false,
+          isSubmodule: false,
+          sources: ['staged', 'unstaged'],
+          rawXY: 'MM',
+        },
+        {
+          path: 'apps/desktop/new.ts',
+          oldPath: null,
+          indexStatus: null,
+          worktreeStatus: 'untracked',
+          isUntracked: true,
+          isUnmerged: false,
+          isSubmodule: false,
+          sources: ['unstaged'],
+          rawXY: '??',
+        },
+      ],
+      stagedCount: 1,
+      unstagedCount: 2,
+      untrackedCount: 1,
+      unmergedCount: 0,
+      inProgress: [],
+      writeDisabledReasons: [],
+      dirty: true,
+    },
+    diffs: { staged: [], unstaged: [] },
+    summary: {} as never,
+  } satisfies ReviewData;
+  const renderTree = (
+    currentData: ReviewData,
+    currentChanges: ReadonlyMap<string, WorkdirGitFileChange>,
+  ) =>
     <ChangedFilesList
       sessionId="session-1"
       deviceId={null}
-      data={{
-        scope: {
-          sessionId: 'session-1',
-          workdir: '/repo',
-          worktreePath: '/repo',
-          workingDir: '/repo',
-          repoRoot: '/repo',
-          branch: 'main',
-          headOid: null,
-          isDetached: false,
-          isUnborn: false,
-          source: 'worktree',
-          aheadBehind: { ahead: 0, behind: 0, upstream: null, stale: false },
-          disabledReason: null,
-          disabledMessage: null,
-          resolutionChain: [],
-        },
-        status: {
-          scope: {} as never,
-          files: [],
-          stagedCount: 1,
-          unstagedCount: 2,
-          untrackedCount: 1,
-          unmergedCount: 0,
-          inProgress: [],
-          writeDisabledReasons: [],
-          dirty: true,
-        },
-        diffs: { staged: [], unstaged: [] },
-        summary: {} as never,
-      }}
-      changes={changes}
+      data={currentData}
+      changes={currentChanges}
       query=""
       selectedPath={null}
       loading={false}
       error={null}
       onSelectFile={vi.fn()}
-      onReverted={onReverted}
-    />,
-  );
-  return { changes, onReverted };
+      onGitStateChanged={onGitStateChanged}
+    />;
+  const view = render(renderTree(data, changes));
+  return {
+    changes,
+    data,
+    onGitStateChanged,
+    rerenderWith: (nextData: ReviewData, nextChanges = changes) => {
+      view.rerender(renderTree(nextData, nextChanges));
+    },
+  };
 }
 
 describe('ChangedFilesList', () => {
-  it('shows aggregated changes and reverts one file or all files', async () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
     vi.stubGlobal('electronAPI', {
-      gitReview: { discardFile, discardAll, unstageAll },
+      gitReview: { commit, commitMessage, discardFile, discardAll, push, unstageAll },
     });
+  });
 
-    const { onReverted } = renderList();
+  it('shows aggregated changes and reverts one file or all files', async () => {
+    const { onGitStateChanged } = renderList();
     expect(screen.getByText('rightSidebar.fileBrowser.changes')).toBeTruthy();
     const row = screen.getByRole('button', { name: /a\.ts/ });
     await act(async () => {
@@ -157,11 +226,11 @@ describe('ChangedFilesList', () => {
     });
     expect(unstageAll).toHaveBeenCalledTimes(1);
     expect(unstageAll.mock.calls[0][0].targets).toEqual([
-      { path: 'src/a.ts', oldPath: null, source: 'staged' },
+      { path: 'apps/desktop/src/a.ts', oldPath: null, source: 'staged' },
     ]);
     expect(discardAll).toHaveBeenCalledTimes(1);
     expect(discardAll.mock.calls[0][0].targets).toEqual([
-      { path: 'src/a.ts', oldPath: null, source: 'unstaged' },
+      { path: 'apps/desktop/src/a.ts', oldPath: null, source: 'unstaged' },
     ]);
     expect(discardFile).not.toHaveBeenCalled();
 
@@ -173,10 +242,105 @@ describe('ChangedFilesList', () => {
     expect(unstageAll).toHaveBeenCalledTimes(2);
     expect(discardAll).toHaveBeenCalledTimes(2);
     expect(discardAll.mock.calls[1][0].targets).toEqual([
-      { path: 'src/a.ts', oldPath: null, source: 'unstaged' },
-      { path: 'new.ts', oldPath: null, source: 'unstaged' },
+      { path: 'apps/desktop/src/a.ts', oldPath: null, source: 'unstaged' },
+      { path: 'apps/desktop/new.ts', oldPath: null, source: 'unstaged' },
     ]);
-    expect(onReverted).toHaveBeenCalledTimes(2);
-    vi.unstubAllGlobals();
+    expect(onGitStateChanged).toHaveBeenCalledTimes(2);
+  });
+
+  it('commits a complete message and only pushes when auto push is enabled', async () => {
+    const { data, onGitStateChanged } = renderList();
+    const messageField = screen.getByRole('textbox', {
+      name: 'rightSidebar.fileBrowser.commitMessage',
+    }) as HTMLTextAreaElement;
+    expect(messageField.value).toBe(buildDeterministicCommitMessage(data));
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'rightSidebar.fileBrowser.aiCommitSummary' }),
+      );
+    });
+    expect(messageField.value).toBe(
+      'feat(desktop): 增加 AI 提交信息总结\n\n- 根据代码差异生成提交说明',
+    );
+
+    const commitButton = screen.getByRole('button', {
+      name: 'rightSidebar.fileBrowser.commitToGithub',
+    });
+    await act(async () => {
+      fireEvent.click(commitButton);
+    });
+    expect(commit).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      message: 'feat(desktop): 增加 AI 提交信息总结\n\n- 根据代码差异生成提交说明',
+      includeUnstaged: true,
+    });
+    expect(buildDeterministicCommitMessage(data)).toContain(
+      [
+        'chore(desktop): 更新 2 个工作区文件',
+        '',
+        '- 新增：apps/desktop/new.ts',
+        '- 修改：apps/desktop/src/a.ts',
+      ].join('\n'),
+    );
+    expect(push).not.toHaveBeenCalled();
+    expect(onGitStateChanged).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'rightSidebar.fileBrowser.autoPush' }));
+    await act(async () => {
+      fireEvent.click(commitButton);
+    });
+    expect(push).toHaveBeenCalledWith({ sessionId: 'session-1' });
+    expect(onGitStateChanged).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps the AI draft when Git status refreshes before commit', async () => {
+    const { data, rerenderWith } = renderList();
+    const messageField = screen.getByRole('textbox', {
+      name: 'rightSidebar.fileBrowser.commitMessage',
+    }) as HTMLTextAreaElement;
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'rightSidebar.fileBrowser.aiCommitSummary' }),
+      );
+    });
+    expect(messageField.value).toBe(
+      'feat(desktop): 增加 AI 提交信息总结\n\n- 根据代码差异生成提交说明',
+    );
+
+    rerenderWith({
+      ...data,
+      status: {
+        ...data.status!,
+        files: [
+          ...data.status!.files,
+          {
+            path: 'apps/desktop/src/refreshed.ts',
+            oldPath: null,
+            indexStatus: null,
+            worktreeStatus: 'modified',
+            isUntracked: false,
+            isUnmerged: false,
+            isSubmodule: false,
+            sources: ['unstaged'],
+            rawXY: ' M',
+          },
+        ],
+      },
+    });
+
+    expect(messageField.value).toBe(
+      'feat(desktop): 增加 AI 提交信息总结\n\n- 根据代码差异生成提交说明',
+    );
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'rightSidebar.fileBrowser.commitToGithub' }),
+      );
+    });
+    expect(commit).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      message: 'feat(desktop): 增加 AI 提交信息总结\n\n- 根据代码差异生成提交说明',
+      includeUnstaged: true,
+    });
   });
 });

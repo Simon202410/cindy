@@ -696,6 +696,7 @@ import {
 import { createPiRuntimeRecovery } from './agent-binaries/pi-runtime-recovery.js';
 import { createDynamicMaker } from './maker-host/dynamic-maker.js';
 import { ensureBundledRipgrepReady } from './maker-host/runtime-configs.js';
+import { requestUtilityText } from './utility-model/oneShotCandidates.js';
 import {
   ensureActiveCatalogLoaded,
   getDesktopSelectableCatalog,
@@ -2826,10 +2827,16 @@ function persistedZoomMenuItem(
       : role === 'zoomIn'
         ? 'CommandOrControl+Plus'
         : 'CommandOrControl+-';
+  // macOS keeps the visible shortcut labels, but zoomIn/zoomOut are dispatched
+  // by the renderer so a focused code editor can own Cmd +/- first.
+  const registerWithMenu =
+    process.platform === 'darwin' && (role === 'zoomIn' || role === 'zoomOut')
+      ? false
+      : registerAccelerator;
   return {
     label: nativeMenuRoleLabel(role),
     accelerator,
-    registerAccelerator,
+    registerAccelerator: registerWithMenu,
     click: () => {
       void updatePersistedWindowZoom(delta).catch((error: unknown) => {
         createLogger('appearance-settings-menu').error('persisted page zoom update failed', {
@@ -9650,6 +9657,20 @@ app.on('ready', async () => {
       } catch {
         return false;
       }
+    },
+    generateCommitMessage: async (prompt) => {
+      const ownerScope = activeOwnerScopeKey();
+      const result = await requestUtilityText(getMakerCore(), prompt, {
+        maxTokens: 600,
+        timeoutMs: 20_000,
+        disableReasoning: true,
+        reasoningEffort: 'minimal',
+        responseInstructions: 'Return only the commit message in the requested format.',
+        beforeDispatch: async () =>
+          !isAppSessionBoundaryPending() && activeOwnerScopeKey() === ownerScope,
+      });
+      if (!result.ok) throw new Error(`commit message model unavailable: ${result.reason}`);
+      return result.text;
     },
   });
   // device-link 远程 git 审查(只读):git-review:remote-op handler(被控端角色;

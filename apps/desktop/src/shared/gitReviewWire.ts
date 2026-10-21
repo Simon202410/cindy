@@ -406,6 +406,11 @@ export interface ReviewCommitResult {
   stderr: string;
 }
 
+export interface ReviewCommitMessageDraft {
+  message: string;
+  source: 'ai' | 'fallback';
+}
+
 export interface ReviewPushConfirmForce {
   remoteRef: string;
   expectedOid: string;

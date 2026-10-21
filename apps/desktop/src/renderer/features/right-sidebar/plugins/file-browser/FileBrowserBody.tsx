@@ -688,7 +688,7 @@ function FileBrowserBodyWithWorkdir({
               loading={gitChanges.loading}
               error={gitChanges.error}
               onSelectFile={handleSelectFile}
-              onReverted={() => {
+              onGitStateChanged={() => {
                 gitChanges.refresh();
                 void tree.refresh();
                 projectFiles.refresh();

@@ -22,7 +22,7 @@ import { tags as t } from '@lezer/highlight';
 
 const CODE_FONT_STACK = 'var(--app-font-code, var(--app-font-code-default))';
 const UI_FONT_STACK = 'var(--app-font-ui, var(--app-font-ui-default))';
-const CODE_FONT_SIZE = 'var(--app-code-font-size)';
+const CODE_FONT_SIZE = 'var(--app-editor-font-size, var(--app-code-font-size))';
 
 // ── Color palettes ───────────────────────────────────────────────────────
 
@@ -275,7 +275,7 @@ function makePlainEditorTheme(isDark: boolean) {
   return EditorView.theme(
     {
       '&': {
-        fontSize: '15px',
+        fontSize: 'var(--app-editor-font-size, 15px)',
         backgroundColor: 'transparent',
         height: '100%',
         color: text,
@@ -324,7 +324,7 @@ function makeMarkdownEditorTheme(isDark: boolean) {
   return EditorView.theme(
     {
       '&': {
-        fontSize: '16px',
+        fontSize: 'var(--app-editor-font-size, 16px)',
         backgroundColor: 'transparent',
         height: '100%',
         color: text,

@@ -29,6 +29,7 @@ export interface FontSettings {
   codeFamily: string;
   uiSize: number;
   codeSize: number;
+  editorFontSize?: number;
 }
 
 interface FontSettingsContextValue extends FontSettings {
@@ -80,6 +81,7 @@ export function getInitialFontSettings(): FontSettings {
     codeFamily: settings.codeFamily,
     uiSize: settings.uiSize,
     codeSize: settings.codeSize,
+    editorFontSize: settings.editorFontSize,
   };
 }
 
@@ -109,6 +111,14 @@ export function applyFontSettings(settings: FontSettings): void {
     }
   }
   set('--app-code-font-size', `${codeSize}px`);
+  if (
+    typeof settings.editorFontSize === 'number' &&
+    Number.isFinite(settings.editorFontSize)
+  ) {
+    set('--app-editor-font-size', `${clampFontSize(settings.editorFontSize)}px`);
+  } else {
+    for (const target of targets) target.style.removeProperty('--app-editor-font-size');
+  }
   set('--app-ui-font-size', `${uiSize}px`);
 
   for (const [tokenSize, base] of Object.entries(UI_TEXT_TOKEN_SIZES)) {
@@ -144,6 +154,7 @@ export function FontSettingsProvider({ children }: { children: ReactNode }) {
         codeFamily: normalized.codeFamily,
         uiSize: normalized.uiSize,
         codeSize: normalized.codeSize,
+        editorFontSize: normalized.editorFontSize,
       };
       confirmedSettingsRef.current = confirmed;
       const optimistic = pendingWritesRef.current.reduce(

@@ -58,6 +58,10 @@ import { defaultKeymap, history, historyKeymap, indentWithTab, redo, undo } from
 import { syntaxHighlighting } from '@codemirror/language';
 import { SearchCursor } from '@codemirror/search';
 
+import {
+  clampAppearanceCodeSize,
+  DEFAULT_APPEARANCE_SETTINGS,
+} from '@/../shared/appearanceSettings';
 import { cn } from '@/lib/utils';
 import {
   githubLightHighlight,
@@ -1068,6 +1072,34 @@ function getSelectionText(view: EditorView): string | null {
   return view.state.doc.sliceString(from, to);
 }
 
+function adjustEditorFontSize(view: EditorView, delta: -1 | 1): boolean {
+  const current = Number.parseFloat(getComputedStyle(view.contentDOM).fontSize);
+  const next = clampAppearanceCodeSize(
+    (Number.isFinite(current) ? current : DEFAULT_APPEARANCE_SETTINGS.codeSize) + delta,
+  );
+  const root = document.documentElement;
+  const previous = root.style.getPropertyValue('--app-editor-font-size');
+  const apply = (value: string | null) => {
+    for (const target of [root, document.body]) {
+      if (value === null) target.style.removeProperty('--app-editor-font-size');
+      else target.style.setProperty('--app-editor-font-size', value);
+    }
+  };
+  apply(`${next}px`);
+  const persist = window.electronAPI?.appearanceSettings?.setPatch;
+  if (persist) {
+    void persist({ editorFontSize: next }).catch((error: unknown) => {
+      apply(previous || null);
+      window.electronAPI?.logToMain?.(
+        'error',
+        'renderer/plaintext-editor',
+        `editor font size persist failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+  }
+  return true;
+}
+
 export const PlaintextEditor = forwardRef<PlaintextEditorHandle, PlaintextEditorProps>(
   function PlaintextEditor(
     {
@@ -1309,6 +1341,26 @@ export const PlaintextEditor = forwardRef<PlaintextEditorHandle, PlaintextEditor
               save();
               return true;
             },
+          },
+          {
+            key: 'Mod-=',
+            run: (view) => adjustEditorFontSize(view, 1),
+          },
+          {
+            key: 'Mod-Shift-=',
+            run: (view) => adjustEditorFontSize(view, 1),
+          },
+          {
+            key: 'Mod-NumpadAdd',
+            run: (view) => adjustEditorFontSize(view, 1),
+          },
+          {
+            key: 'Mod-Minus',
+            run: (view) => adjustEditorFontSize(view, -1),
+          },
+          {
+            key: 'Mod-NumpadSubtract',
+            run: (view) => adjustEditorFontSize(view, -1),
           },
         ])),
         keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),

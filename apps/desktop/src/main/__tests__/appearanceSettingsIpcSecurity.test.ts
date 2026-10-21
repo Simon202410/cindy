@@ -71,6 +71,12 @@ const persisted = {
 };
 
 describe('appearance settings IPC authorization', () => {
+  it('accepts and clamps the hidden editor font-size override', () => {
+    expect(__testing.parsePatch({ editorFontSize: 18 })).toEqual({ editorFontSize: 18 });
+    expect(__testing.parsePatch({ editorFontSize: 99 })).toEqual({ editorFontSize: 24 });
+    expect(__testing.parsePatch({ editorFontSize: 1 })).toEqual({ editorFontSize: 10 });
+  });
+
   it('validates literal visibility and accepts null only to reset its override', () => {
     for (const wallpaperBlur of [0, 8, 20, null]) {
       expect(__testing.parsePatch({ wallpaperBlur })).toEqual({ wallpaperBlur });
