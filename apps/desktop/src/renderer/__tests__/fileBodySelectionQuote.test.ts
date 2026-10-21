@@ -10,6 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FileBodyView } from '@/features/cc-agent/workdir-browse/FileBodyView';
 import { clearDraft, getDraft } from '@/lib/composerDraftStore';
 
+const writeFileMock = vi.hoisted(() => vi.fn());
+
 vi.mock('react-i18next', () => {
   const t = (key: string) => key;
   return { useTranslation: () => ({ t, i18n: { language: 'en' } }) };
@@ -22,7 +24,9 @@ vi.mock('@/components/markdown/MarkdownImageLightboxHost', () => ({ MarkdownImag
 vi.mock('@/features/cc-agent/workdir-browse/ImagePreview', () => ({ ImagePreview: () => null }));
 vi.mock('@/features/cc-agent/workdir-browse/PdfPreview', () => ({ PdfPreview: () => null }));
 vi.mock('@/features/cc-agent/workdir-browse/DrawioPreview', () => ({ DrawioPreview: () => null }));
-vi.mock('@/lib/fileBrowserTransport', () => ({ fileBrowserApiFor: () => ({}) }));
+vi.mock('@/lib/fileBrowserTransport', () => ({
+  fileBrowserApiFor: () => ({ writeFile: writeFileMock }),
+}));
 
 const sessionId = 'file-body-selection-quote';
 const workdir = resolve(tmpdir(), 'cindy-file-body-selection-quote');
@@ -33,6 +37,8 @@ const rangeDescriptors = {
 };
 
 beforeEach(() => {
+  writeFileMock.mockReset();
+  writeFileMock.mockResolvedValue({ ok: true, size: 12, mtimeMs: 1 });
   vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame'] });
   vi.stubGlobal('electronAPI', {
     onSelectionContextMenuAddToChat: () => () => {},
@@ -118,5 +124,54 @@ describe('FileBodyView selection quotes', () => {
     ]);
     expect(selection.isCollapsed).toBe(true);
     expect(screen.queryByRole('button', { name: 'chat.quote.addToChat' })).toBeNull();
+  });
+
+  it('saves from the unsaved chip and the Ctrl/Cmd+S shortcut', async () => {
+    const source = 'const value = 1;';
+    const { container } = render(createElement(FileBodyView, {
+      workdir,
+      sessionId,
+      relPath: 'value.ts',
+      content: {
+        kind: 'text', relPath: 'value.ts', content: source,
+        size: source.length, mtimeMs: 0, truncated: false,
+      },
+    }));
+    const view = EditorView.findFromDOM(
+      container.querySelector<HTMLElement>('.cm-editor')!,
+    )!;
+
+    act(() => {
+      view.dispatch({
+        changes: { from: 0, to: source.length, insert: 'const value = 2;' },
+        userEvent: 'input',
+      });
+    });
+    const saveButton = await screen.findByRole('button', {
+      name: 'ccAgent.workdirBrowse.fileBody.menuSave',
+    });
+    await act(async () => {
+      fireEvent.click(saveButton);
+    });
+    expect(writeFileMock).toHaveBeenCalledTimes(1);
+    expect(writeFileMock.mock.calls[0][0]).toMatchObject({
+      relPath: 'value.ts',
+      content: 'const value = 2;',
+    });
+
+    act(() => {
+      view.dispatch({
+        changes: { from: 0, to: 16, insert: 'const value = 3;' },
+        userEvent: 'input',
+      });
+    });
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 's', code: 'KeyS', ctrlKey: true });
+    });
+    expect(writeFileMock).toHaveBeenCalledTimes(2);
+    expect(writeFileMock.mock.calls[1][0]).toMatchObject({
+      relPath: 'value.ts',
+      content: 'const value = 3;',
+    });
   });
 });

@@ -44,6 +44,7 @@ import { useFileTree, type DirEntry } from './hooks/useFileTree';
 import { fileBrowserApiFor } from '@/lib/fileBrowserTransport';
 import { useConfirmSwitchAwayIfDirty } from './hooks/useConfirmSwitchAwayIfDirty';
 import { useProjectFileList } from './hooks/useProjectFileList';
+import { useWorkdirGitChanges } from './hooks/useWorkdirGitChanges';
 import { FileTreeView, type FileTreeViewHandle, type PendingCreate } from './FileTreeView';
 import { useRevealFileInTree } from './hooks/useRevealFileInTree';
 import { FileFilterInput } from './FileFilterInput';
@@ -215,6 +216,7 @@ export function WorkdirBrowseSidebar({
   // 仍然有感知)。先放开让用户看全部文件,等 hasDocDescendant 加缓存或换成
   // 流式增量返回再启用。scanner.ts 的过滤逻辑保留,改回 true 即可恢复。
   const tree = useFileTree({ workdir, remoteHostId, deviceId, hideMetaFiles: true, docMode: false });
+  const gitChanges = useWorkdirGitChanges(sessionId, workdir, deviceId);
 
   // 文件名筛选 query —— tree 模式下用,独立于内容搜索。空 query 显示文件树,有
   // 内容显示筛选结果列表。workdir 切换时自动清空(下方 useEffect)。
@@ -340,10 +342,10 @@ export function WorkdirBrowseSidebar({
 
   const handleRefresh = useCallback(() => {
     void tree.refresh();
-    // 文件树刷新时同步 invalidate 项目级文件索引,新增 / 重命名 / 删除的文件下次
-    // 筛选才能看到。
+    gitChanges.refresh();
+    // 文件树刷新时同步 invalidate 文件索引和 Git 状态。
     projectFiles.refresh();
-  }, [tree, projectFiles]);
+  }, [tree, gitChanges.refresh, projectFiles]);
 
   // FileTreeView 的 imperative ref —— useRevealFileInTree 通过它调 scrollToPath。
   const fileTreeRef = useRef<FileTreeViewHandle>(null);
@@ -793,6 +795,8 @@ export function WorkdirBrowseSidebar({
               ref={fileTreeRef}
               tree={tree}
               selectedPath={selectedPath}
+              gitFiles={gitChanges.files}
+              gitDirectories={gitChanges.directories}
               onSelectFile={handleSelectFile}
               onNewFile={handleNewFile}
               onNewFolder={handleNewFolder}

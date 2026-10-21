@@ -88,6 +88,7 @@ import {
   markdownImageDecorationField,
 } from './markdownImageLivePreview';
 import { computeFenceLineRoles, type FenceLineRole } from './markdownFenceLines';
+import { bindHexColorSwatch, destroyHexColorPicker } from './hexColorPicker';
 import { findHexColors, getPlaintextEditorChrome } from './plaintextEditorChrome';
 import { useIsDarkMode } from './useIsDarkMode';
 
@@ -170,6 +171,10 @@ export interface PlaintextEditorProps {
   /** view.scrollDOM 滚动事件回调,带最新 scrollTop。passive listener,无
    *  额外 React state,父组件可以把它直接落到 fileScrollStore。 */
   onScroll?: (top: number, line: number | null, offset: number | null) => void;
+  /** 1-based lines that differ from the Git baseline and still exist in the current file. */
+  changedLines?: ReadonlySet<number>;
+  /** Save shortcut fallback when focus is inside CodeMirror. */
+  onSave?: () => void;
 }
 
 // ── 大文件降级阈值 ─────────────────────────────────────────────────────────
@@ -236,30 +241,62 @@ const searchHighlightField = StateField.define<DecorationSet>({
   provide: (f) => EditorView.decorations.from(f),
 });
 
+const setGitChangedLinesEffect = StateEffect.define<ReadonlySet<number>>();
+const EMPTY_CHANGED_LINES: ReadonlySet<number> = new Set();
+const gitChangedLineDecoration = Decoration.line({ class: 'cm-git-changed-line' });
+
+const gitChangedLinesField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(value, tr) {
+    let next = value.map(tr.changes);
+    for (const effect of tr.effects) {
+      if (!effect.is(setGitChangedLinesEffect)) continue;
+      const ranges = [...effect.value]
+        .sort((a, b) => a - b)
+        .filter((line) => line >= 1 && line <= tr.state.doc.lines)
+        .map((line) => gitChangedLineDecoration.range(tr.state.doc.line(line).from));
+      next = ranges.length > 0 ? Decoration.set(ranges) : Decoration.none;
+    }
+    return next;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
 class HexColorWidget extends WidgetType {
   constructor(private readonly color: string) {
     super();
   }
 
-  toDOM(): HTMLElement {
+  toDOM(view: EditorView): HTMLElement {
     const span = document.createElement('span');
-    span.setAttribute('aria-hidden', 'true');
     span.className = 'cm-hex-color-swatch';
     // 色块展示的是文档里的颜色值，不是主题 token。
     span.style.backgroundColor = this.color;
+    span.dataset.color = this.color;
+    span.setAttribute('aria-label', this.color);
+    bindHexColorSwatch(span, view);
     return span;
   }
 
   eq(other: HexColorWidget): boolean {
     return this.color === other.color;
   }
+
+  updateDOM(dom: HTMLElement): boolean {
+    dom.style.backgroundColor = this.color;
+    dom.dataset.color = this.color;
+    dom.setAttribute('aria-label', this.color);
+    return true;
+  }
 }
 
 const hexColorPreviewPlugin = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
+    private readonly view: EditorView;
 
     constructor(view: EditorView) {
+      this.view = view;
       this.decorations = this.buildDecorations(view);
     }
 
@@ -290,6 +327,10 @@ const hexColorPreviewPlugin = ViewPlugin.fromClass(
         }
       }
       return builder.finish();
+    }
+
+    destroy() {
+      destroyHexColorPicker(this.view);
     }
   },
   {
@@ -1040,6 +1081,8 @@ export const PlaintextEditor = forwardRef<PlaintextEditorHandle, PlaintextEditor
       initialScrollOffset,
       imageBaseDir,
       onScroll,
+      changedLines,
+      onSave,
     },
     ref,
   ) {
@@ -1125,6 +1168,10 @@ export const PlaintextEditor = forwardRef<PlaintextEditorHandle, PlaintextEditor
     onChangeRef.current = onChange;
     const onScrollRef = useRef(onScroll);
     onScrollRef.current = onScroll;
+    const changedLinesRef = useRef<ReadonlySet<number>>(changedLines ?? EMPTY_CHANGED_LINES);
+    changedLinesRef.current = changedLines ?? EMPTY_CHANGED_LINES;
+    const onSaveRef = useRef(onSave);
+    onSaveRef.current = onSave;
 
     // ── Search helpers (单一 CodeMirror 实现) ────────────────────────────
     const search = useMemo<PlaintextEditorSearchHandle>(
@@ -1253,10 +1300,22 @@ export const PlaintextEditor = forwardRef<PlaintextEditorHandle, PlaintextEditor
       //   - code chrome → 始终挂 lineNumbers gutter,即使 parser 缺失。
       const extensions = [
         history(),
+        Prec.highest(keymap.of([
+          {
+            key: 'Mod-s',
+            run: () => {
+              const save = onSaveRef.current;
+              if (!save) return false;
+              save();
+              return true;
+            },
+          },
+        ])),
         keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
         ...(initialConfig.skipWrap ? [] : [EditorView.lineWrapping]),
         ...(initialConfig.useCodeChrome ? [lineNumbers()] : []),
         ...(initialConfig.useCodeChrome ? [hexColorPreviewPlugin] : []),
+        ...(initialConfig.useCodeChrome ? [gitChangedLinesField] : []),
         ...highlightExtensions,
         ...(initialConfig.isMarkdown
           ? [
@@ -1299,6 +1358,9 @@ export const PlaintextEditor = forwardRef<PlaintextEditorHandle, PlaintextEditor
       const state = EditorState.create({ doc: docValueRef.current, extensions });
       const view = new EditorView({ state, parent: cmContainerRef.current });
       cmViewRef.current = view;
+      view.dispatch({
+        effects: setGitChangedLinesEffect.of(changedLinesRef.current),
+      });
       // 还原跨 mount 滚动位置。Markdown live-preview/table widgets 会在
       // mount 后几帧内持续改变 height map；恢复期间触发的 scroll event 是
       // 程序化中间态，不能写回 store，否则下一次切回会随机使用这些半成品
@@ -1415,6 +1477,14 @@ export const PlaintextEditor = forwardRef<PlaintextEditorHandle, PlaintextEditor
         cmViewRef.current = null;
       };
     }, [isDarkMode, editableCompartment, tableLabelsCompartment]);
+
+    useEffect(() => {
+      const view = cmViewRef.current;
+      if (!view) return;
+      view.dispatch({
+        effects: setGitChangedLinesEffect.of(changedLines ?? EMPTY_CHANGED_LINES),
+      });
+    }, [changedLines]);
 
     // locale / t 变化时只换 Markdown table 菜单文案,不重建整棵 EditorView。
     useEffect(() => {

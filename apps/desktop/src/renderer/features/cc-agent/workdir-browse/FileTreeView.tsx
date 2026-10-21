@@ -74,6 +74,11 @@ import {
 import { isBrowserOpenablePath } from '../../../../shared/browserOpenableExts';
 import { pickFileIcon, pickFolderIcon } from './lib/fileIcon';
 import { isLightboxImagePath } from './lib/imageExt';
+import {
+  WORKDIR_GIT_STATUS_VISUAL,
+  type WorkdirGitDirectoryChange,
+  type WorkdirGitFileChange,
+} from './lib/workdirGitStatus';
 import type { DirEntry, UseFileTreeReturn } from './hooks/useFileTree';
 import { useDelayedFlag } from './hooks/useDelayedFlag';
 
@@ -136,6 +141,10 @@ export interface FileTreeViewProps {
   onRenameSubmit?: (newName: string) => void;
   /** Esc / 空内容失焦 / 父层主动取消。 */
   onRenameCancel?: () => void;
+  /** Git status for files, keyed by workdir-relative path. */
+  gitFiles?: ReadonlyMap<string, WorkdirGitFileChange>;
+  /** Aggregated Git status for directories, keyed by workdir-relative path. */
+  gitDirectories?: ReadonlyMap<string, WorkdirGitDirectoryChange>;
 }
 
 interface EntryRow {
@@ -223,6 +232,8 @@ export const FileTreeView = forwardRef<FileTreeViewHandle, FileTreeViewProps>(fu
     renamingPath,
     onRenameSubmit,
     onRenameCancel,
+    gitFiles,
+    gitDirectories,
   },
   ref,
 ) {
@@ -351,6 +362,8 @@ export const FileTreeView = forwardRef<FileTreeViewHandle, FileTreeViewProps>(fu
             selected={entry.type === 'file' && entry.relPath === selectedPath}
             expanded={tree.expanded.has(entry.relPath)}
             loading={tree.loadingPaths.has(entry.relPath)}
+            gitChange={gitFiles?.get(entry.relPath)}
+            gitDirectoryChange={gitDirectories?.get(entry.relPath)}
             onToggleFolder={tree.toggleFolder}
             onSelectFile={onSelectFile}
             onPreviewImage={onPreviewImage}
@@ -551,6 +564,8 @@ interface FileTreeRowProps {
   onSelectFile: (relPath: string) => void;
   onPreviewImage?: (entry: DirEntry) => void;
   onContextMenu: (e: React.MouseEvent) => void;
+  gitChange?: WorkdirGitFileChange;
+  gitDirectoryChange?: WorkdirGitDirectoryChange;
 }
 
 function FileTreeRow({
@@ -563,6 +578,8 @@ function FileTreeRow({
   onSelectFile,
   onPreviewImage,
   onContextMenu,
+  gitChange,
+  gitDirectoryChange,
 }: FileTreeRowProps) {
   const { t } = useTranslation();
   const isFolder = entry.type === 'directory';
@@ -572,6 +589,9 @@ function FileTreeRow({
   const showLoadingChevron = useDelayedFlag(loading && isFolder);
   const Chev = expanded ? ChevronDown : ChevronRight;
   const Icon = isFolder ? pickFolderIcon(expanded) : pickFileIcon(entry.name);
+  const gitKind = gitChange?.kind ?? gitDirectoryChange?.kind;
+  const gitVisual = gitKind ? WORKDIR_GIT_STATUS_VISUAL[gitKind] : null;
+  const gitLabel = gitKind ? t(`ccAgent.workdirBrowse.gitStatus.${gitKind}`) : undefined;
 
   // Indent: 16 px per depth + 8 px base padding.
   const paddingLeft = depth * 16 + 8;
@@ -657,6 +677,25 @@ function FileTreeRow({
           )}
         />
         <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+        {gitVisual && !isFolder ? (
+          <span
+            aria-label={gitLabel}
+            title={gitLabel}
+            className="ml-1 shrink-0 text-11 font-medium"
+            style={{ color: gitVisual.color }}
+          >
+            {gitVisual.code}
+          </span>
+        ) : null}
+        {gitVisual && isFolder ? (
+          <span
+            role="img"
+            aria-label={gitLabel}
+            title={gitLabel}
+            className="ml-1 size-1.5 shrink-0 rounded-full"
+            style={{ backgroundColor: gitVisual.color }}
+          />
+        ) : null}
       </button>
       {canPreviewImage ? (
         <Tip text={t('ccAgent.workdirBrowse.imagePreview.viewLarge')} side="left">

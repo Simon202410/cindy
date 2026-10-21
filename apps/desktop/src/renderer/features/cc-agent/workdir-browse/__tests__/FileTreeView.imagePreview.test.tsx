@@ -122,3 +122,50 @@ describe('FileTreeView image preview action', () => {
     expect(onSelectFile).toHaveBeenCalledWith('cat.png');
   });
 });
+
+describe('FileTreeView Git status decoration', () => {
+  // 测试价值：状态字母和目录聚合点必须真实渲染在文件树行上；
+  // 最小失败输入是 src/a.ts 已修改但 src 目录没有状态点。tier: unit。
+  it('shows file status letters and aggregated directory dots', () => {
+    const gitTree: UseFileTreeReturn = {
+      ...makeTree(),
+      entries: new Map([
+        [
+          '',
+          [{ name: 'src', relPath: 'src', type: 'directory', size: 0, mtimeMs: 1 }],
+        ],
+        [
+          'src',
+          [{ name: 'a.ts', relPath: 'src/a.ts', type: 'file', size: 1, mtimeMs: 2 }],
+        ],
+      ]),
+      expanded: new Set(['', 'src']),
+    };
+    render(
+      <FileTreeView
+        tree={gitTree}
+        selectedPath={null}
+        onSelectFile={vi.fn()}
+        gitFiles={
+          new Map([
+            [
+              'src/a.ts',
+              {
+                path: 'src/a.ts',
+                kind: 'modified',
+                staged: false,
+                unstaged: true,
+              },
+            ],
+          ])
+        }
+        gitDirectories={
+          new Map([['src', { kind: 'modified', count: 1 }]])
+        }
+      />,
+    );
+
+    expect(screen.getAllByLabelText('ccAgent.workdirBrowse.gitStatus.modified')).toHaveLength(2);
+    expect(screen.getByText('M').textContent).toBe('M');
+  });
+});

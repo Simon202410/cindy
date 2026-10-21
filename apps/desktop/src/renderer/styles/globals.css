@@ -1967,6 +1967,136 @@ mark.doc-search-mark [class] {
   color: inherit;
 }
 
+.cm-hex-picker[hidden] {
+  display: none;
+}
+
+.cm-hex-picker {
+  position: fixed;
+  z-index: 60;
+  width: min(280px, calc(100vw - 16px));
+  padding: 8px;
+  border: 1px solid var(--cmd-palette-border);
+  border-radius: 12px;
+  background: var(--cmd-palette-bg);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-menu);
+  user-select: none;
+}
+
+.cm-hex-picker__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border-default);
+  border-radius: 9999px;
+  background: var(--surface-chip);
+}
+
+.cm-hex-picker__header:focus-within {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.cm-hex-picker__native {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.cm-hex-picker__native::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.cm-hex-picker__native::-webkit-color-swatch {
+  border: 1px solid var(--border-default);
+  border-radius: 9999px;
+}
+
+.cm-hex-picker__hex {
+  min-width: 0;
+  flex: 1;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--app-font-code, var(--app-font-code-default));
+  font-size: 13px;
+  line-height: 32px;
+}
+
+.cm-hex-picker__hex[aria-invalid='true'] {
+  color: var(--error-flat);
+}
+
+.cm-hex-picker__body {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+/* 黑/白与彩虹只属于 HSV 色彩空间本身，不参与主题换色。 */
+.cm-hex-picker__sv {
+  position: relative;
+  height: 152px;
+  flex: 1;
+  overflow: hidden;
+  border-radius: 8px;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.cm-hex-picker__hue {
+  position: relative;
+  width: 14px;
+  height: 152px;
+  flex: none;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: linear-gradient(
+    to bottom,
+    hsl(0 100% 50%),
+    hsl(60 100% 50%),
+    hsl(120 100% 50%),
+    hsl(180 100% 50%),
+    hsl(240 100% 50%),
+    hsl(300 100% 50%),
+    hsl(360 100% 50%)
+  );
+  cursor: pointer;
+  touch-action: none;
+}
+
+.cm-hex-picker__handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--surface-elevated);
+  border-radius: 9999px;
+  outline: 1px solid var(--text-primary);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.cm-hex-picker__hue .cm-hex-picker__handle {
+  left: 50%;
+}
+
+.cm-hex-picker[data-readonly='true'] .cm-hex-picker__body {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 /* Settings search navigation briefly marks the section selected from the
    sidebar. Reuse the existing dual-theme search tokens instead of baking a
    light-only color into the settings surface. */

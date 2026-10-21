@@ -57,6 +57,7 @@ import {
 import { useFileContent } from '@/features/cc-agent/workdir-browse/hooks/useFileContent';
 import { useConfirmSwitchAwayIfDirty } from '@/features/cc-agent/workdir-browse/hooks/useConfirmSwitchAwayIfDirty';
 import { useProjectFileList } from '@/features/cc-agent/workdir-browse/hooks/useProjectFileList';
+import { useWorkdirGitChanges } from '@/features/cc-agent/workdir-browse/hooks/useWorkdirGitChanges';
 import { useRevealFileInTree } from '@/features/cc-agent/workdir-browse/hooks/useRevealFileInTree';
 import { SearchPanel } from '@/features/cc-agent/workdir-browse/search/SearchPanel';
 import { useProjectSearch } from '@/features/cc-agent/workdir-browse/search/hooks/useProjectSearch';
@@ -137,6 +138,7 @@ function FileBrowserBodyWithWorkdir({
   const isRemote = Boolean(remoteHostId) || Boolean(deviceId);
   const tree = useFileTree({ workdir, hideMetaFiles: true, remoteHostId, deviceId });
   const fileContent = useFileContent(workdir, state.selectedFilePath, remoteHostId, deviceId);
+  const gitChanges = useWorkdirGitChanges(ctx.sessionId, workdir, deviceId);
   const [externalFile, setExternalFile] = useState<ExternalFileSelection | null>(null);
   const [imageLightboxSrc, setImageLightboxSrc] = useState<string | null>(null);
   const externalFileContent = useFileContent(externalFile?.workdir ?? workdir, externalFile?.relPath ?? null);
@@ -313,11 +315,12 @@ function FileBrowserBodyWithWorkdir({
     [confirmSwitchAway, ctx, revealFileInTree, state.selectedFilePath],
   );
 
-  // refresh 按钮:文件树 + 项目文件索引一起 invalidate。
+  // refresh 按钮:文件树 + 项目文件索引 + Git 状态一起 invalidate。
   const handleRefresh = useCallback(() => {
     void tree.refresh();
     projectFiles.refresh();
-  }, [tree, projectFiles]);
+    gitChanges.refresh();
+  }, [tree, projectFiles, gitChanges.refresh]);
 
   const handleCopyFilePath = useCallback(
     async (entry: DirEntry) => {
@@ -552,6 +555,13 @@ function FileBrowserBodyWithWorkdir({
   const activeWorkdir = externalFile?.workdir ?? workdir;
   const activeRelPath = externalFile?.relPath ?? state.selectedFilePath;
   const activeContent = externalFile ? externalFileContent.content : fileContent.content;
+  const activeChangedLines =
+    !externalFile && state.selectedFilePath
+      ? gitChanges.changedLines.get(state.selectedFilePath)
+      : undefined;
+  useEffect(() => {
+    if (!externalFile && activeContent.kind === 'text') gitChanges.scheduleRefresh();
+  }, [activeContent, externalFile, gitChanges.scheduleRefresh]);
 
   // remote 会话的 watch 事件经远端 daemon 推回(P4),正常路径下与本地同等实时;
   // 但 SSH 断链重连的间隙里 daemon 换代、事件会漏,窗口重新聚焦时静默刷新
@@ -602,7 +612,15 @@ function FileBrowserBodyWithWorkdir({
           relPath={activeRelPath}
           content={activeContent}
           allowEdit={!externalFile}
-          onSaved={externalFile ? undefined : fileContent.setLocal}
+          changedLines={activeChangedLines}
+          onSaved={
+            externalFile
+              ? undefined
+              : (data) => {
+                  fileContent.setLocal(data);
+                  gitChanges.refresh();
+                }
+          }
         />
       </div>
       {/* 中间分割线 + resize handle —— 4px 命中宽度,内部 1px 实线;hover 高亮提示
@@ -670,6 +688,8 @@ function FileBrowserBodyWithWorkdir({
                 ref={fileTreeRef}
                 tree={tree}
                 selectedPath={state.selectedFilePath}
+                gitFiles={gitChanges.files}
+                gitDirectories={gitChanges.directories}
                 onSelectFile={handleSelectFile}
                 onPreviewImage={handlePreviewImage}
                 onCopyFilePath={!isRemote ? handleCopyFilePath : undefined}

@@ -172,6 +172,8 @@ export interface FileBodyViewProps {
   jumpLine?: number | null;
   /** Project-search one-shot jump has been consumed; parent should clear URL params. */
   onSearchJumpConsumed?: () => void;
+  /** 1-based lines changed against the Git baseline, shown as subtle add markers. */
+  changedLines?: ReadonlySet<number>;
 }
 
 /**
@@ -199,6 +201,7 @@ export const FileBodyView = forwardRef<FileBodyHandle, FileBodyViewProps>(functi
     jumpQuery,
     jumpLine,
     onSearchJumpConsumed,
+    changedLines,
   },
   ref,
 ) {
@@ -964,7 +967,29 @@ export const FileBodyView = forwardRef<FileBodyHandle, FileBodyViewProps>(functi
           z-10 确保浮在内容上。 */}
       <div className="absolute right-[18px] top-[14px] z-10 flex items-center gap-2">
         {!barVisible && canEdit && !isMarkdown && (alwaysEdit ? dirty || saving : editMode) && (
-          <EditingChip dirty={dirty} compact={alwaysEdit} saving={saving} />
+          <>
+            <EditingChip dirty={dirty} compact={alwaysEdit} saving={saving} />
+            {(dirty || saving) && (
+              <button
+                type="button"
+                disabled={saving || !dirty}
+                aria-label={t('ccAgent.workdirBrowse.fileBody.menuSave')}
+                title={`${t('ccAgent.workdirBrowse.fileBody.menuSave')} ${
+                  window.electronAPI?.platform === 'darwin' ? '⌘S' : 'Ctrl+S'
+                }`}
+                onClick={() => void writeToDisk()}
+                className={cn(
+                  'flex size-7 shrink-0 items-center justify-center rounded-full border',
+                  'border-[var(--cmd-palette-border)] bg-[var(--cmd-palette-bg)] text-[var(--settings-section-desc)]',
+                  'transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
+                  'disabled:pointer-events-none disabled:opacity-45',
+                )}
+              >
+                <Save size={14} strokeWidth={1.75} />
+              </button>
+            )}
+          </>
         )}
         {barVisible ? (
           <DocSearchBar
@@ -1056,6 +1081,14 @@ export const FileBodyView = forwardRef<FileBodyHandle, FileBodyViewProps>(functi
               initialScrollLine={scrollAnchor?.line}
               initialScrollOffset={scrollAnchor?.offset}
               imageBaseDir={imageBaseDir}
+              changedLines={changedLines}
+              onSave={
+                canEdit && editMode
+                  ? () => {
+                      if (!saving) void writeToDisk();
+                    }
+                  : undefined
+              }
               onScroll={handleEditorScroll}
               onChange={
                 editMode

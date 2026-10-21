@@ -57,6 +57,7 @@ import {
 import { isOrcaLeadSession, isOrcaWorkerSession } from '@/lib/orcaSessionIdentity';
 import { OrcaSplitView } from '../OrcaSplitView';
 import { useFileContent } from './hooks/useFileContent';
+import { useWorkdirGitChanges } from './hooks/useWorkdirGitChanges';
 import {
   getSessionDeviceId,
   remoteProjectsStore,
@@ -185,6 +186,11 @@ function WorkdirBrowseContent() {
 
   const selectedPath = searchParams.get('file');
   const { content, setLocal: setLocalContent } = useFileContent(browsableWorkdir, selectedPath, remoteHostId, deviceId);
+  const gitChanges = useWorkdirGitChanges(sessionId, browsableWorkdir, deviceId);
+  const changedLines = selectedPath ? gitChanges.changedLines.get(selectedPath) : undefined;
+  useEffect(() => {
+    if (content.kind === 'text') gitChanges.scheduleRefresh();
+  }, [content, gitChanges.scheduleRefresh]);
   const rail = useChatRailResize();
   const railCollapse = useChatRailCollapsed();
   const activeSessionIsOrcaLead = Boolean(currentSession && isOrcaLeadSession(currentSession));
@@ -514,7 +520,11 @@ function WorkdirBrowseContent() {
               sessionId={sessionId}
               relPath={selectedPath}
               content={content}
-              onSaved={setLocalContent}
+              changedLines={changedLines}
+              onSaved={(data) => {
+                setLocalContent(data);
+                gitChanges.refresh();
+              }}
               jumpQuery={searchParams.get('search') || null}
               jumpLine={(() => {
                 const v = searchParams.get('line');

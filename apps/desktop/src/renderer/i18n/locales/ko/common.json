@@ -12911,6 +12911,16 @@
         "collapseAll": "모두 접기",
         "refresh": "새로 고침"
       },
+      "gitStatus": {
+        "modified": "수정됨",
+        "added": "추가됨",
+        "deleted": "삭제됨",
+        "renamed": "이름 변경됨",
+        "copied": "복사됨",
+        "typechange": "유형 변경됨",
+        "untracked": "추적되지 않음",
+        "unmerged": "충돌"
+      },
       "treeMenu": {
         "newFile": "새 파일",
         "newFolder": "새 폴더",

@@ -12964,6 +12964,16 @@
         "collapseAll": "Collapse all",
         "refresh": "Refresh"
       },
+      "gitStatus": {
+        "modified": "Modified",
+        "added": "Added",
+        "deleted": "Deleted",
+        "renamed": "Renamed",
+        "copied": "Copied",
+        "typechange": "Type changed",
+        "untracked": "Untracked",
+        "unmerged": "Conflicted"
+      },
       "treeMenu": {
         "newFile": "New File",
         "newFolder": "New Folder",

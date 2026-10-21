@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   findHexColors,
+  formatHexColor,
   getPlaintextEditorChrome,
+  hsvToRgb,
+  parseHexColor,
+  rgbToHsv,
 } from '../components/markdown/plaintextEditorChrome';
 
 describe('PlaintextEditor — unknown code language chrome fallback', () => {
@@ -28,5 +32,25 @@ describe('PlaintextEditor — inline hex color previews', () => {
       { from: 28, to: 33, color: '#fff8' },
     ]);
     expect(findHexColors('issue#123456 and foo#fff')).toEqual([]);
+  });
+
+  it('round-trips RGB, alpha and HSV values for the picker', () => {
+    expect(parseHexColor('#ECF2F8')).toEqual({
+      r: 236,
+      g: 242,
+      b: 248,
+      a: 255,
+      hasAlpha: false,
+    });
+    expect(parseHexColor('#fff8')).toEqual({
+      r: 255,
+      g: 255,
+      b: 255,
+      a: 136,
+      hasAlpha: true,
+    });
+    expect(formatHexColor(parseHexColor('#fff8')!)).toBe('#ffffff88');
+    expect(rgbToHsv(255, 0, 0)).toEqual({ h: 0, s: 1, v: 1 });
+    expect(hsvToRgb(120, 1, 1)).toEqual({ r: 0, g: 255, b: 0 });
   });
 });

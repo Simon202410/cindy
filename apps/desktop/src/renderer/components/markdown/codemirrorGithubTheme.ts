@@ -234,6 +234,15 @@ function makeEditorTheme(c: typeof githubLightColors, isDark: boolean) {
         border: '1px solid var(--border-default)',
         borderRadius: '2px',
         boxSizing: 'border-box',
+        cursor: 'pointer',
+      },
+      '.cm-hex-color-swatch:hover, .cm-hex-color-swatch:focus-visible': {
+        outline: '2px solid var(--focus-ring)',
+        outlineOffset: '1px',
+      },
+      '.cm-git-changed-line': {
+        backgroundColor: 'var(--diff-add-bg)',
+        boxShadow: 'inset 3px 0 0 var(--diff-add-fg)',
       },
       // Cursor color matches text color.
       '.cm-cursor, .cm-dropCursor': { borderLeftColor: c.text },

@@ -12911,6 +12911,16 @@
         "collapseAll": "收起所有",
         "refresh": "刷新"
       },
+      "gitStatus": {
+        "modified": "已修改",
+        "added": "新增",
+        "deleted": "已删除",
+        "renamed": "已重命名",
+        "copied": "已复制",
+        "typechange": "类型变更",
+        "untracked": "未跟踪",
+        "unmerged": "有冲突"
+      },
       "treeMenu": {
         "newFile": "新建文件",
         "newFolder": "新建文件夹",
