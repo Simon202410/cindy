@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Sparkles, Undo2 } from 'lucide-react';
+import { GitBranch, Sparkles, Undo2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Tip } from '@/components/ui/tooltip';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog-provider';
+import { ErrorNotice } from '@/components/ui/error-notice';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import type {
@@ -21,6 +22,8 @@ import {
   WORKDIR_GIT_STATUS_VISUAL,
   type WorkdirGitFileChange,
 } from './lib/workdirGitStatus';
+
+const AUTO_PUSH_STORAGE_KEY = 'cc-agent.fileBrowser.autoPush';
 
 export function ChangedFilesList({
   sessionId,
@@ -48,7 +51,14 @@ export function ChangedFilesList({
   const { t } = useTranslation();
   const { confirm } = useConfirmDialog();
   const [pendingKey, setPendingKey] = useState<string | null>(null);
-  const [autoPush, setAutoPush] = useState(false);
+  const [autoPush, setAutoPush] = useState(() => {
+    try {
+      return window.localStorage.getItem(AUTO_PUSH_STORAGE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [pushError, setPushError] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
   const [generatingMessage, setGeneratingMessage] = useState(false);
   const deterministicMessage = useMemo(() => buildDeterministicCommitMessage(data), [data]);
@@ -68,6 +78,11 @@ export function ChangedFilesList({
       data &&
       data.status?.writeDisabledReasons.length === 0,
   );
+  const pushBranch = data?.scope.isDetached
+    ? data.scope.headOid
+      ? t('rightSidebar.review.detachedHead', { oid: data.scope.headOid.slice(0, 7) })
+      : t('rightSidebar.review.branchUnknown')
+    : data?.scope.branch || t('rightSidebar.review.branchUnknown');
 
   const revert = async (targets: ReviewFileTarget[], key: string, scope: 'file' | 'section') => {
     if (!sessionId || targets.length === 0 || !canWrite) return;
@@ -134,6 +149,7 @@ export function ChangedFilesList({
     const message = commitMessage.trim();
     if (!sessionId || !canWrite || changes.size === 0 || committing || !message) return;
     setCommitting(true);
+    setPushError(null);
     let committed = false;
     try {
       const result = await window.electronAPI.gitReview.commit({
@@ -176,7 +192,8 @@ export function ChangedFilesList({
       onGitStateChanged();
     } catch (err) {
       const message = extractIpcError(err)?.message ?? String(err);
-      toast.error(committed ? `${t('rightSidebar.review.push.failedTitle')}: ${message}` : message);
+      if (committed) setPushError(message);
+      else toast.error(message);
     } finally {
       setCommitting(false);
     }
@@ -284,6 +301,15 @@ export function ChangedFilesList({
           </div>
         )}
       </div>
+      {pushError && (
+        <ErrorNotice
+          role="alert"
+          className="mx-3 mb-2"
+          message={t('rightSidebar.review.push.failedTitle')}
+          description={pushError}
+          onDismiss={() => setPushError(null)}
+        />
+      )}
       <div className="shrink-0 border-t border-[var(--border-default)] px-3 py-2">
         <textarea
           value={commitMessage}
@@ -297,16 +323,35 @@ export function ChangedFilesList({
           disabled={!canWrite || committing || generatingMessage}
           className="min-h-[76px] w-full resize-none rounded-[8px] border border-[var(--border-default)] bg-[var(--surface-elevated)] px-2.5 py-2 text-11 leading-relaxed text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring-soft)] disabled:opacity-60"
         />
-        <label className="mb-2 flex cursor-pointer items-center gap-2 text-11 text-[var(--text-secondary)]">
-          <input
-            type="checkbox"
-            checked={autoPush}
-            disabled={!canWrite || committing || generatingMessage}
-            onChange={(event) => setAutoPush(event.target.checked)}
-            className="size-3.5 shrink-0 accent-[var(--accent-cta-bg-pure)]"
-          />
-          <span>{t('rightSidebar.fileBrowser.autoPush')}</span>
-        </label>
+        <div className="mb-2 flex min-w-0 items-center gap-2 text-11 text-[var(--text-secondary)]">
+          <label className="flex shrink-0 cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              checked={autoPush}
+              disabled={!canWrite || committing || generatingMessage}
+              onChange={(event) => {
+                const checked = event.target.checked;
+                setAutoPush(checked);
+                try {
+                  window.localStorage.setItem(AUTO_PUSH_STORAGE_KEY, String(checked));
+                } catch {
+                  // Keep the in-memory preference when local storage is unavailable.
+                }
+              }}
+              className="size-3.5 shrink-0 accent-[var(--accent-cta-bg-pure)]"
+            />
+            <span>{t('rightSidebar.fileBrowser.autoPush')}</span>
+          </label>
+          <span
+            className="ml-auto flex min-w-0 items-center gap-1 text-[var(--text-tertiary)]"
+            title={t('rightSidebar.fileBrowser.pushBranch', { branch: pushBranch })}
+          >
+            <GitBranch size={11} className="shrink-0" />
+            <span className="truncate">
+              {t('rightSidebar.fileBrowser.pushBranch', { branch: pushBranch })}
+            </span>
+          </span>
+        </div>
         <div className="mt-1.5 flex items-center gap-1.5">
           <Button
             variant="secondary"

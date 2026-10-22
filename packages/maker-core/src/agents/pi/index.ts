@@ -247,6 +247,7 @@ import {
   isFailedOrAbortedPiCompaction,
   markPiHostAbortRequested,
   markPiHostTurnStartPending,
+  piToolResultHasImage,
   rollbackPiHostAbortRequest,
   rollbackPiHostTurnStart,
   translatePiEvent,
@@ -5813,6 +5814,13 @@ export class PiAgent extends BaseAgent {
               dismissPending: true,
             });
           }
+          if (event.type === 'tool_execution_end') {
+            if (piToolResultHasImage(event.result)) {
+              // Images remain available to the current turn, but the next send must
+              // rebuild so base64 bytes never become long-lived prompt history.
+              nativeAutoCompactNeedsRollover = true;
+            }
+          }
           translatePiEvent(event, queue, ctx);
           if (event.type === 'compaction_end') {
             const nativeAutomaticFailure =
@@ -7349,6 +7357,7 @@ export class PiAgent extends BaseAgent {
             await assertReviewMessageContentPaths(message.content, opts.workingDir, reviewReadGrants);
           }
           let { text, images } = await buildPiPrompt(message, { remote });
+          if (images.length > 0) nativeAutoCompactNeedsRollover = true;
           const pinnedSkill = sendOpts?.[PINNED_SKILL_INVOCATION];
           rejectIfCancelled(sendOpts, 'send');
           assertImageInputSupported(images);
@@ -7707,6 +7716,7 @@ export class PiAgent extends BaseAgent {
           await assertReviewMessageContentPaths(message.content, opts.workingDir, reviewReadGrants);
         }
         let { text, images } = await buildPiPrompt(message, { remote });
+        if (images.length > 0) nativeAutoCompactNeedsRollover = true;
         rejectIfCancelled(sendOpts, 'steer');
         rejectIfUnavailable();
         assertImageInputSupported(images);

@@ -619,6 +619,8 @@ import { readSessionTitle } from '../im/shared/controlProjects.js';
 import { readSessionNotificationPreview } from '../localDb/sessionNotificationPreview.js';
 import { createBotGroupWorkDir } from './botGroupWorkDir.js';
 import { createBotGroupAttachmentStore } from './botGroupAttachments.js';
+import { createGroupWorkbenchStore } from './groupWorkbenchStore.js';
+import { setGroupWorkbenchToolService } from './groupWorkbenchToolBridge.js';
 import { requestUtilityText } from '../utility-model/oneShotCandidates.js';
 import { validateExistingLocalProjectDirectory } from '../mcp-integrations/createProject.js';
 import { gitExec } from '../worktree/gitExec.js';
@@ -12422,9 +12424,14 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
     },
   });
   setBotRemoteMessageService(botDirectMessageServiceHolder);
+  setGroupWorkbenchToolService(null);
   botGroupChatServiceHolder?.dispose();
   // 分工 steps run in the group's folder, the 项目文件夹, or one worktree per plan (bot-group-chat.md §7.5).
   const botGroupAttachments = createBotGroupAttachmentStore({ ownerRoot: () => ownerScopedUserDataPath(), log });
+  const groupWorkbench = createGroupWorkbenchStore({
+    root: () => ownerScopedUserDataPath(),
+    createId: () => randomUUID(),
+  });
   const botGroupWorkDir = createBotGroupWorkDir({
     ownerRoot: () => ownerScopedUserDataPath(),
     detectRepo: async (dir) => {
@@ -12547,6 +12554,7 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
     hasPendingInteraction: (sessionId) => hasPendingAgentInteractionForSession(sessionId),
     decidePlan: createBotGroupPlanDecider((prompt, opts) => requestUtilityText(maker, prompt, opts)),
     workDir: botGroupWorkDir,
+    workbench: groupWorkbench,
     validateProjectDir: async (dir) => {
       try {
         const checked = await validateExistingLocalProjectDirectory(dir);
@@ -12644,6 +12652,7 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
   };
   // This fork keeps group chats on this computer (bot-group-chat.md §1).
   botGroupChatServiceHolder = withChatServer(createBotGroupChatService(botGroupChatDeps), botGroupChatDeps, { localGroups: true });
+  setGroupWorkbenchToolService(botGroupChatServiceHolder);
   unsubscribeCompanionCloudBroadcast?.();
   unsubscribeCompanionCloudBroadcast = companionHomes.onChange((snapshot) => {
     const scope = captureDataOwnerBroadcastScope();
@@ -13073,6 +13082,14 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
   ipcMain.handle(MAKER_INVOKE.BOT_GROUP_PLAN_EDIT, async (event, input: unknown) => {
     assertTrustedAppRendererEvent(event);
     return botGroupChatServiceHolder ? botGroupChatServiceHolder.editPlanStep(input) : botGroupNotReady;
+  });
+  ipcMain.handle(MAKER_INVOKE.BOT_GROUP_WORKBENCH_GET, async (event, groupId: unknown) => {
+    assertTrustedAppRendererEvent(event);
+    return botGroupChatServiceHolder ? botGroupChatServiceHolder.getWorkbench(groupId) : botGroupNotReady;
+  });
+  ipcMain.handle(MAKER_INVOKE.BOT_GROUP_WORKBENCH_ACTION, async (event, input: unknown) => {
+    assertTrustedAppRendererEvent(event);
+    return botGroupChatServiceHolder ? botGroupChatServiceHolder.updateWorkbench(input) : botGroupNotReady;
   });
   ipcMain.handle(
     MAKER_INVOKE.BOT_DELEGATION_CANCEL,

@@ -23,7 +23,7 @@ import { RemoveChatFromListButton } from './RemoveChatFromListButton';
  * 与普通任务的整区拖入一致；消息上的图片与文件复用普通聊天用户气泡的图片视图与附件 chip。
  */
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent } from 'react';
-import { ArrowLeft, CircleAlert, RefreshCcw, Settings2 } from 'lucide-react';
+import { ArrowLeft, CircleAlert, ListTodo, RefreshCcw, Settings2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
@@ -83,6 +83,7 @@ import {
   type BotGroupPlanCardAction,
 } from './BotGroupPlan';
 import { BotGroupDateDivider, BotGroupTimelineItem } from './BotGroupTimelineItem';
+import { GroupWorkbenchPanel } from './GroupWorkbenchPanel';
 import {
   botGroupHandoffStepNumbers,
   botGroupMemberDisplayName,
@@ -211,6 +212,7 @@ function BotGroupChatContent({ groupId }: { groupId: string }) {
   const [continuing, setContinuing] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [planPending, setPlanPending] = useState<PlanPending | null>(null);
+  const [workbenchOpen, setWorkbenchOpen] = useState(false);
   const planPendingRef = useRef(false);
   const loadRef = useRef<(additionalSources?: string[], changedIds?: string[]) => void>(() => {});
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -230,6 +232,8 @@ function BotGroupChatContent({ groupId }: { groupId: string }) {
   const [unverifiedOriginals, setUnverifiedOriginals] = useState<ReadonlySet<string>>(NO_IDS);
   const loadingOlderRef = useRef(false);
   const locatingRef = useRef(false);
+
+  useEffect(() => setWorkbenchOpen(false), [groupId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -643,6 +647,20 @@ function BotGroupChatContent({ groupId }: { groupId: string }) {
         </button>
         <div className="ml-auto flex shrink-0 items-center">
           {headerGroup.serverBacked && headerGroup.canInvite && <ChatInviteButton groupId={headerGroup.id} />}
+          {!headerGroup.serverBacked ? (
+            <Tip text={t('bots.groupChat.workbench.open')}>
+              <button
+                type="button"
+                onClick={() => setWorkbenchOpen((value) => !value)}
+                aria-label={t('bots.groupChat.workbench.open')}
+                aria-expanded={workbenchOpen}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+                style={WINDOW_NO_DRAG_STYLE}
+              >
+                <ListTodo size={15} />
+              </button>
+            </Tip>
+          ) : null}
           <Tip text={settingsLabel}>
             <button
               type="button"
@@ -657,7 +675,7 @@ function BotGroupChatContent({ groupId }: { groupId: string }) {
         </div>
       </div>
     );
-  }, [headerGroup?.name, headerGroup?.id, headerGroup?.serverBacked, headerGroup?.canInvite, members, organizerBotId, headerStatus, openSettings, separator, settingsLabel]);
+  }, [headerGroup?.name, headerGroup?.id, headerGroup?.serverBacked, headerGroup?.canInvite, members, organizerBotId, headerStatus, openSettings, separator, settingsLabel, t, workbenchOpen]);
   useRegisterContentHeader(header);
 
   const running = group?.round.status === 'running';
@@ -1247,6 +1265,9 @@ function BotGroupChatContent({ groupId }: { groupId: string }) {
         />
       ) : null}
     </main>
+    {!group.serverBacked && workbenchOpen && !threadRootId ? (
+      <GroupWorkbenchPanel groupId={group.id} members={group.members} onClose={() => setWorkbenchOpen(false)} />
+    ) : null}
     {group.serverBacked && threadRootId && <ChatThreadPanel key={`${group.id}:${threadRootId}`} group={group} rootId={threadRootId} quoteSources={quoteSources}
       focus={threadFocus} sharedReplies={sharedReplies} onRevealShare={revealMainMessage} onClose={closeThread} />}
     </div>

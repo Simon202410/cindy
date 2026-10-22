@@ -10,7 +10,10 @@ import type { WorkdirGitFileChange } from '../lib/workdirGitStatus';
 
 const confirm = vi.fn(async () => true);
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, options?: { branch?: string }) =>
+      options?.branch ? `${key}:${options.branch}` : key,
+  }),
 }));
 vi.mock('@/components/ui/confirm-dialog-provider', () => ({
   useConfirmDialog: () => ({ confirm }),
@@ -199,6 +202,7 @@ function renderList() {
     changes,
     data,
     onGitStateChanged,
+    unmount: view.unmount,
     rerenderWith: (nextData: ReviewData, nextChanges = changes) => {
       view.rerender(renderTree(nextData, nextChanges));
     },
@@ -208,6 +212,7 @@ function renderList() {
 describe('ChangedFilesList', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
     vi.stubGlobal('electronAPI', {
       gitReview: { commit, commitMessage, discardFile, discardAll, push, unstageAll },
     });
@@ -292,6 +297,53 @@ describe('ChangedFilesList', () => {
     });
     expect(push).toHaveBeenCalledWith({ sessionId: 'session-1' });
     expect(onGitStateChanged).toHaveBeenCalledTimes(3);
+  });
+
+  it('remembers auto push across mounts and shows the push branch', () => {
+    const first = renderList();
+    expect(
+      screen.getByText('rightSidebar.fileBrowser.pushBranch:main'),
+    ).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'rightSidebar.fileBrowser.autoPush' }),
+    );
+    expect(
+      (screen.getByRole('checkbox', {
+        name: 'rightSidebar.fileBrowser.autoPush',
+      }) as HTMLInputElement).checked,
+    ).toBe(true);
+
+    first.unmount();
+    renderList();
+    expect(
+      (screen.getByRole('checkbox', {
+        name: 'rightSidebar.fileBrowser.autoPush',
+      }) as HTMLInputElement).checked,
+    ).toBe(true);
+  });
+
+  it('shows a push failure above the commit card', async () => {
+    push.mockRejectedValueOnce(new Error('permission denied'));
+    renderList();
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'rightSidebar.fileBrowser.autoPush' }),
+    );
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'rightSidebar.fileBrowser.commitToGithub',
+        }),
+      );
+    });
+
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toContain('rightSidebar.review.push.failedTitle');
+    expect(alert.textContent).toContain('permission denied');
+    expect(alert.compareDocumentPosition(
+      screen.getByRole('textbox', { name: 'rightSidebar.fileBrowser.commitMessage' }),
+    ) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('keeps the AI draft when Git status refreshes before commit', async () => {

@@ -5519,6 +5519,16 @@ interface ElectronAPI {
     createBotGroup: (
       input: import('../shared/botGroupChat').BotGroupCreateInput,
     ) => Promise<import('../shared/botGroupChat').BotGroupCreateResult>;
+    getBotGroupWorkbench: (
+      groupId: string,
+    ) => Promise<import('@cindy/maker-shared/groupWorkbench').GroupWorkbenchResult<{
+      workbench: import('@cindy/maker-shared/groupWorkbench').GroupWorkbenchSnapshot;
+    }>>;
+    actBotGroupWorkbench: (
+      input: import('@cindy/maker-shared/groupWorkbench').GroupWorkbenchAction,
+    ) => Promise<import('@cindy/maker-shared/groupWorkbench').GroupWorkbenchResult<{
+      workbench: import('@cindy/maker-shared/groupWorkbench').GroupWorkbenchSnapshot;
+    }>>;
     updateBotGroup: (
       input: import('../shared/botGroupChat').BotGroupUpdateInput,
     ) => Promise<import('../shared/botGroupChat').BotGroupMutationResult>;

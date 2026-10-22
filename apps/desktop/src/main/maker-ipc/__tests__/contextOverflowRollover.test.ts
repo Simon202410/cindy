@@ -8,6 +8,7 @@ import {
   effectivePiContextWindow,
   findLatestRebuildableError,
   hasModelWindowContextToProtect,
+  PI_NATIVE_TRANSCRIPT_SOFT_LIMIT_BYTES,
   lookupVerifiedContextWindow,
   isContextOverflowErrorData,
   isOversizedHistoryErrorData,
@@ -112,6 +113,12 @@ describe('shouldRebuildPiNativeSession', () => {
     expect(shouldRebuildPiNativeSession({ message: 'pi rpc timeout after 30000ms: prompt' })).toBe(
       true,
     );
+  });
+
+  it('treats a PI HTTP 413 request-body rejection as an unhealthy native session', () => {
+    const error = { sdkError: '413 Failed to buffer the request body: length limit exceeded' };
+    expect(isContextOverflowErrorData(error)).toBe(true);
+    expect(shouldRebuildPiNativeSession(error)).toBe(true);
   });
 
   it('treats Grok 4 remaining-window pressure as a rebuild even if the DB window is inflated', () => {
@@ -234,6 +241,21 @@ describe('planContextOverflowRollover', () => {
       msg('error', 'context overflow', 'e1'),
     ]);
     expect(plan.action).toBe('rebuild');
+  });
+
+  it('replays a hidden bot-chat input with its internal trigger prefix removed', () => {
+    expect(planContextOverflowRollover([
+      msg('user', '[UI_ACTION_TRIGGER]修改登录页', 'u1'),
+      msg('error', 'context overflow', 'e1'),
+    ]).action).toBe('stop');
+    expect(planContextOverflowRollover([
+      msg('user', '[UI_ACTION_TRIGGER]修改登录页', 'u1'),
+      msg('error', 'context overflow', 'e1'),
+    ], null, false, true)).toMatchObject({
+      action: 'rebuild',
+      sourceUserClientId: 'u1',
+      sourceUserContent: '修改登录页',
+    });
   });
 
   it('keeps per-row source metadata so the rebuilt handoff still names who sent each message', () => {
@@ -1876,6 +1898,92 @@ describe('createContextOverflowRollover', () => {
     expect(deps.replayUserMessage).not.toHaveBeenCalled();
   });
 
+  it('rebuilds before the next send when a Pi group lane already persisted a gateway 413', async () => {
+    const deps = makeDeps([
+      msg('user', '[UI_ACTION_TRIGGER]修改登录页', 'u1'),
+      msg('error', {
+        message: '413 Failed to buffer the request body: length limit exceeded',
+        sdkError: '413 Failed to buffer the request body: length limit exceeded',
+      }, 'e1'),
+    ]);
+    deps.getSessionRow.mockResolvedValue({
+      status: 'active',
+      source: 'bot',
+      botRole: 'group',
+      agentKind: 'pi',
+      remoteHostId: null,
+      clearedAt: null,
+      sdkSessionId: '/tmp/oversized-pi.jsonl',
+      contextTokens: 0,
+      contextWindow: 0,
+      model: 'deepseek-flash',
+      providerId: 'deepseek',
+    });
+    const rollover = createContextOverflowRollover(deps);
+    await expect(rollover.prepareUnhealthySession('s1')).resolves.toBe(true);
+    expect(deps.closeSession).toHaveBeenCalledWith('s1');
+    expect(deps.commitRebuild).toHaveBeenCalled();
+    expect(deps.replayUserMessage).not.toHaveBeenCalled();
+  });
+
+  it('rebuilds a Pi group lane before send when its native JSONL crosses the image-heavy soft limit', async () => {
+    const deps = makeDeps([
+      msg('user', '[UI_ACTION_TRIGGER]改一下登录页', 'u1'),
+      msg('assistant', '已经完成第一轮调整', 'a1'),
+    ]);
+    deps.getSessionRow.mockResolvedValue({
+      status: 'active',
+      source: 'bot',
+      botRole: 'group',
+      agentKind: 'pi',
+      remoteHostId: null,
+      clearedAt: null,
+      sdkSessionId: '/tmp/oversized-by-images.jsonl',
+      contextTokens: 0,
+      contextWindow: 1_000_000,
+      model: 'deepseek-flash',
+      providerId: 'deepseek',
+    });
+    const getNativeSessionBytes = vi.fn(async () => PI_NATIVE_TRANSCRIPT_SOFT_LIMIT_BYTES);
+    const rollover = createContextOverflowRollover({ ...deps, getNativeSessionBytes });
+    await expect(rollover.prepareUnhealthySession('s1')).resolves.toBe(true);
+    expect(getNativeSessionBytes).toHaveBeenCalledWith('/tmp/oversized-by-images.jsonl');
+    expect(deps.closeSession).toHaveBeenCalledWith('s1');
+    expect(deps.commitRebuild).toHaveBeenCalled();
+    expect(deps.replayUserMessage).not.toHaveBeenCalled();
+  });
+
+  it('rebuilds before the next send whenever native Pi history contains an image block', async () => {
+    const deps = makeDeps([
+      msg('user', '[UI_ACTION_TRIGGER]看看这个界面', 'u1'),
+      msg('assistant', '已检查截图', 'a1'),
+    ]);
+    deps.getSessionRow.mockResolvedValue({
+      status: 'active',
+      source: 'bot',
+      botRole: 'group',
+      agentKind: 'pi',
+      remoteHostId: null,
+      clearedAt: null,
+      sdkSessionId: '/tmp/pi-with-image.jsonl',
+      contextTokens: 0,
+      contextWindow: 1_000_000,
+      model: 'deepseek-flash',
+      providerId: 'deepseek',
+    });
+    deps.getLiveSession.mockReturnValue(undefined);
+    const nativeSessionContainsImages = vi.fn(async () => true);
+    const rollover = createContextOverflowRollover({
+      ...deps,
+      getNativeSessionBytes: vi.fn(async () => 2 * 1024 * 1024),
+      nativeSessionContainsImages,
+    });
+    await expect(rollover.prepareUnhealthySession('s1')).resolves.toBe(true);
+    expect(nativeSessionContainsImages).toHaveBeenCalledWith('/tmp/pi-with-image.jsonl');
+    expect(deps.commitRebuild).toHaveBeenCalled();
+    expect(deps.replayUserMessage).not.toHaveBeenCalled();
+  });
+
   it('rebuilds before send when host auto-compact has latched a deterministic failure', async () => {
     const deps = makeDeps([msg('user', '继续', 'u1'), msg('assistant', '好', 'a1')]);
     deps.getSessionRow.mockResolvedValue({
@@ -2148,6 +2256,36 @@ describe('createContextOverflowRollover', () => {
       rollover.tryRecover('s1', { reason: 'context-overflow', message: 'prompt too long' }),
     ).resolves.toBe(true);
     expect(deps.closeSession).toHaveBeenCalledWith('s1');
+  });
+
+  it('rolls over a Pi group lane rejected for gateway request-body length', async () => {
+    const deps = makeDeps([msg('user', '[UI_ACTION_TRIGGER]修改登录页', 'u1')]);
+    deps.getSessionRow.mockResolvedValue({
+      status: 'active',
+      source: 'bot',
+      botRole: 'group',
+      agentKind: 'pi',
+      remoteHostId: null,
+      clearedAt: null,
+      sdkSessionId: '/tmp/oversized-pi.jsonl',
+      contextTokens: 0,
+      contextWindow: 0,
+      model: 'deepseek-flash',
+      providerId: 'deepseek',
+    });
+    const rollover = createContextOverflowRollover(deps);
+    rollover.claim('s1');
+    await expect(rollover.tryRecover('s1', {
+      sdkError: '413 Failed to buffer the request body: length limit exceeded',
+    })).resolves.toBe(true);
+    expect(deps.closeSession).toHaveBeenCalledWith('s1');
+    expect(deps.commitRebuild).toHaveBeenCalled();
+    expect(deps.replayUserMessage).toHaveBeenCalledWith(
+      's1',
+      '修改登录页',
+      undefined,
+      expect.objectContaining({ signal: expect.anything() }),
+    );
   });
 
   it('keeps SSH remote sessions out of automatic rollover', async () => {

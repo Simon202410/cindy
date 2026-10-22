@@ -77,7 +77,10 @@ export async function prepareBotWorkspaceRuntime(
   const planRoute = parseBotGroupPlanRouteKey(groupRouteKey);
   if (planRoute) {
     let workDir: string | null | undefined;
-    if (groupRouteKey === botGroupPlanRouteKey(planRoute.groupId, planRoute.planId)) {
+    // Group-workbench tasks intentionally have no bot_group_plans row; their lane
+    // already stores the queue work directory in sessions.working_dir.
+    if (groupRouteKey === botGroupPlanRouteKey(planRoute.groupId, planRoute.planId)
+      && !planRoute.planId.startsWith('workbench-')) {
       const [plan] = await db
         .select({ groupId: botGroupPlans.groupId, workDir: botGroupPlans.workDir })
         .from(botGroupPlans)

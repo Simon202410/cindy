@@ -12,6 +12,7 @@ import {
   isCurrentTurnHostAbortRequested,
   markPiHostAbortRequested,
   markPiHostTurnStartPending,
+  piToolResultHasImage,
   rollbackPiHostTurnStart,
   translatePiEvent,
   usageSnapshotOf,
@@ -42,6 +43,12 @@ function makeQueue(): { queue: AsyncQueue<AgentEvent>; events: AgentEvent[] } {
 const ev = (e: Record<string, unknown>): PiRpcEvent => e as unknown as PiRpcEvent;
 
 describe('pi translator', () => {
+  it('recognizes native image blocks in a tool result', () => {
+    expect(piToolResultHasImage({ content: [{ type: 'image', data: 'AA==', mimeType: 'image/png' }] })).toBe(true);
+    expect(piToolResultHasImage({ content: [{ type: 'text', text: 'done' }] })).toBe(false);
+    expect(piToolResultHasImage(null)).toBe(false);
+  });
+
   it('projects MCP gateway calls into ordinary tools while keeping result pairing intact', () => {
     const ctx = createPiTranslateContext(noopLogger);
     const { queue, events } = makeQueue();

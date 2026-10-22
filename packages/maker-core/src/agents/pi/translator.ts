@@ -641,6 +641,17 @@ function toolResultFullText(result: unknown): string {
   return parts.join('\n');
 }
 
+/** True when Pi is about to retain one or more native image blocks in its transcript. */
+export function piToolResultHasImage(result: unknown): boolean {
+  if (!result || typeof result !== 'object') return false;
+  const content = (result as { content?: unknown }).content;
+  return Array.isArray(content) && content.some((block) => {
+    if (!block || typeof block !== 'object') return false;
+    const type = (block as { type?: unknown }).type;
+    return type === 'image' || type === 'input_image';
+  });
+}
+
 /**
  * pi 的 thinking 事件把 redacted 标记放在 partial 的当前 AssistantMessage block 上。
  * 必须恢复成结构化 stage:redacted，否则占位文本会被当成普通 thinking 落库并显示。

@@ -6218,6 +6218,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
       input: import('../shared/botGroupChat').BotGroupCreateInput,
     ): Promise<import('../shared/botGroupChat').BotGroupCreateResult> =>
       ipcRenderer.invoke('maker:bot-group:create', input),
+    getBotGroupWorkbench: (
+      groupId: string,
+    ): Promise<import('@cindy/maker-shared/groupWorkbench').GroupWorkbenchResult<{
+      workbench: import('@cindy/maker-shared/groupWorkbench').GroupWorkbenchSnapshot;
+    }>> => ipcRenderer.invoke('maker:bot-group:workbench-get', groupId),
+    actBotGroupWorkbench: (
+      input: import('@cindy/maker-shared/groupWorkbench').GroupWorkbenchAction,
+    ): Promise<import('@cindy/maker-shared/groupWorkbench').GroupWorkbenchResult<{
+      workbench: import('@cindy/maker-shared/groupWorkbench').GroupWorkbenchSnapshot;
+    }>> => ipcRenderer.invoke('maker:bot-group:workbench-action', input),
     updateBotGroup: (
       input: import('../shared/botGroupChat').BotGroupUpdateInput,
     ): Promise<import('../shared/botGroupChat').BotGroupMutationResult> =>

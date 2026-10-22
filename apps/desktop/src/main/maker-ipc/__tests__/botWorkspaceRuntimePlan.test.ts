@@ -35,6 +35,9 @@ describe('prepareBotWorkspaceRuntime for 分工 Sessions', () => {
         organizer_bot_id TEXT NOT NULL, organizer_name TEXT NOT NULL, current_step INTEGER,
         work_dir TEXT, branch TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
       );
+      CREATE TABLE sessions (
+        id TEXT PRIMARY KEY, working_dir TEXT
+      );
       INSERT INTO bot_group_plans VALUES
         ('p1', 'g1', 'running', 'x', 'mimi', '咪咪', 0, '/work/site-wt', 'cindy/a', 1, 1),
         ('p2', 'g1', 'running', 'x', 'mimi', '咪咪', 0, '/work/gone', NULL, 1, 1),
@@ -45,7 +48,9 @@ describe('prepareBotWorkspaceRuntime for 分工 Sessions', () => {
         ('c', 'mimi', 'step', 'group', 'group:g1:plan:p1'),
         ('d', 'mimi', 'step-gone', 'group', 'group:g1:plan:p2'),
         ('e', 'mimi', 'step-unstarted', 'group', 'group:g1:plan:p3'),
-        ('f', 'mimi', 'step-wrong-group', 'group', 'group:g2:plan:p1');
+        ('f', 'mimi', 'step-wrong-group', 'group', 'group:g2:plan:p1'),
+        ('g', 'mimi', 'workbench-step', 'group', 'group:g1:plan:workbench-task-1');
+      INSERT INTO sessions (id, working_dir) VALUES ('workbench-step', '/work/site-wt');
     `);
   });
 
@@ -61,6 +66,13 @@ describe('prepareBotWorkspaceRuntime for 分工 Sessions', () => {
 
   it("runs a 分工 Session in its plan's recorded directory", async () => {
     const o = opts('step');
+    await prepareBotWorkspaceRuntime(o, deps);
+    expect(o).toMatchObject({ workingDir: '/work/site-wt', workspaceKind: 'project', remoteHostId: undefined });
+    expect(ensureWorkspaceDir).not.toHaveBeenCalled();
+  });
+
+  it('runs a group-workbench task in the directory stored on its own hidden Session', async () => {
+    const o = opts('workbench-step');
     await prepareBotWorkspaceRuntime(o, deps);
     expect(o).toMatchObject({ workingDir: '/work/site-wt', workspaceKind: 'project', remoteHostId: undefined });
     expect(ensureWorkspaceDir).not.toHaveBeenCalled();

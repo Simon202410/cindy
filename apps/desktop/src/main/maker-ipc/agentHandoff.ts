@@ -452,7 +452,7 @@ function toolResultText(content: unknown): string {
         const block = item as Record<string, unknown>;
         if (block.type === 'image' || block.type === 'input_image' || block.type === 'image_url' ||
           (typeof block.mimeType === 'string' && block.mimeType.startsWith('image/'))) {
-          return '[image omitted]';
+          return '[image omitted; original path is in the matching read tool call]';
         }
       }
       return item;
@@ -541,7 +541,10 @@ function splitTurns(messages: HandoffSourceMessage[], includeToolResults = false
         const id = toolUseIdOf(msg, c);
         // Only text: never serialize image blocks/base64 into the fresh context.
         const text = toolResultText(c?.fullText ?? c?.output ?? c?.content ?? msg.content)
-          .replace(/data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=]+/g, '[image omitted]');
+          .replace(
+            /data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=]+/g,
+            '[image omitted; original path is in the matching read tool call]',
+          );
         const status = c?.isError === true ? 'failed' : 'recorded; verify outcome from result';
         current.detailLines.push(`[Tool result${id ? ` id=${id}` : ''}; ${status}]\n${truncate(text || '(no text result retained)', 1000)}`);
         break;

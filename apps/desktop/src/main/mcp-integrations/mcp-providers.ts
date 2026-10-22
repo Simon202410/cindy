@@ -88,6 +88,7 @@ import {
   runBotWorkbenchTool,
   type BotWorkbenchHostDeps,
 } from '../maker-ipc/botWorkbenchTools.js';
+import { getGroupWorkbenchToolService } from '../maker-ipc/groupWorkbenchToolBridge.js';
 import { createTaskDigestReader } from './taskDigest.js';
 import { createDesktopTaskDigestDeps, createRemoteWorkbenchMessageReader } from './taskDigestHost.js';
 import { createTaskToolCallAuthorizer } from '../maker-ipc/taskToolCallAuthorizer.js';
@@ -1135,6 +1136,15 @@ export function createDesktopMcpProviders(deps: DesktopMcpProvidersDeps): LiziMc
         get: (params) => runBotWorkbenchTool(workbenchHost, (access) => access.get(params)),
         read: (params) => runBotWorkbenchTool(workbenchHost, (access) => access.read(params)),
         continueTask: (params) => runBotWorkbenchTool(workbenchHost, (access) => access.continueTask(params)),
+      },
+      groupWorkbench: {
+        createTasks: async ({ callerSessionId, input }) => {
+          const service = getGroupWorkbenchToolService();
+          if (!service) {
+            return { ok: false as const, errorCode: 'HOST_NOT_READY', message: '群任务功能尚未就绪' };
+          }
+          return service.createWorkbenchTasksFromGroup(callerSessionId, input.tasks, input.start === true);
+        },
       },
       skillhub: createSkillhubAgentTools({
         isCurrentSession: (context) => !!context.sessionId

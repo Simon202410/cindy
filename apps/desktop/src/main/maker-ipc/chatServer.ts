@@ -287,6 +287,15 @@ export function withChatServer(local: BotGroupChatService, deps: BotGroupChatSer
     continuePlan: (...args) => groups().continuePlan(...args),
     retryPlan: (...args) => groups().retryPlan(...args),
     editPlanStep: (...args) => groups().editPlanStep(...args),
+    getWorkbench: (...args) => localGroups
+      ? local.getWorkbench(...args)
+      : Promise.resolve({ ok: false, errorCode: 'NOT_FOUND', message: '群任务只支持本机群' }),
+    updateWorkbench: (...args) => localGroups
+      ? local.updateWorkbench(...args)
+      : Promise.resolve({ ok: false, errorCode: 'NOT_FOUND', message: '群任务只支持本机群' }),
+    createWorkbenchTasksFromGroup: (...args) => localGroups
+      ? local.createWorkbenchTasksFromGroup(...args)
+      : Promise.resolve({ ok: false, errorCode: 'NOT_FOUND', message: '群任务只能由本机群的负责人创建' }),
     // A server run (a 1:1 room, or work queued in an old room) settles there; any other lane falls back to local.
     settleLaneTurn: (...args) => service().settleLaneTurn(...args),
     postCompanionTaskMessage: (...args) => groups().postCompanionTaskMessage(...args),
@@ -2494,6 +2503,9 @@ function createChatServer(local: BotGroupChatService, deps: BotGroupChatServiceD
       }
       changed(room); return { ok: true as const };
     }),
+    getWorkbench: (...args) => local.getWorkbench(...args),
+    updateWorkbench: (...args) => local.updateWorkbench(...args),
+    createWorkbenchTasksFromGroup: (...args) => local.createWorkbenchTasksFromGroup(...args),
     settleLaneTurn: async (terminal: BotGroupLaneTerminal) => {
       const run = [...running.values()].find(r => r.sessionId === terminal.sessionId);
       if (!run) return local.settleLaneTurn(terminal);

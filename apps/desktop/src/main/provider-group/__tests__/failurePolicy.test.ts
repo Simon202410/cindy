@@ -97,6 +97,7 @@ describe('decideProviderGroupFailure — everything else is that computer’s pr
 describe('decideProviderGroupFailure — any computer would fail the same way (stay)', () => {
   it.each<[string, InterruptedTurnErrorSignals, string]>([
     ['prompt too long', { sdkError: 'invalid_request', message: 'prompt is too long' }, 'context'],
+    ['PI request body too large', { sdkError: '413 Failed to buffer the request body: length limit exceeded' }, 'context'],
     ['context overflow reason', { reason: 'context-overflow', message: 'too long' }, 'context'],
     ['Codex context window', { codexErrorInfo: 'contextWindowExceeded', message: 'x' }, 'context'],
     ['Codex history oversized', { reason: 'codex_history_oversized', message: 'x' }, 'context'],

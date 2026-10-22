@@ -80,9 +80,9 @@ const TIMEOUT_CODES = new Set(['ETIMEDOUT', 'ABORT_ERR', 'TimeoutError', 'AbortE
  *  litellm "Invalid model name"、通用 "model_not_found"。 */
 const MODEL_NOT_FOUND_RE =
   /model[^\n]{0,80}(not.{0,4}(found|exist)|does not exist|invalid|unknown|unsupported)|model_not_found|invalid model/i;
-/** 上下文超长：Anthropic "prompt is too long"、OpenAI "maximum context length"、通用 token limit 措辞。 */
+/** 上下文 / 请求体超长：Anthropic、OpenAI、通用 token limit 与 PI gateway 413 措辞。 */
 const CONTEXT_TOO_LONG_RE =
-  /prompt is too long|maximum (?:context|prompt) length|context.{0,20}(length|window).{0,40}(exceed|too)|context_length_exceeded/i;
+  /prompt is too long|maximum (?:context|prompt) length|context.{0,20}(length|window).{0,40}(exceed|too)|context_length_exceeded|failed to buffer the request body.{0,40}length limit exceeded/i;
 /** wire 兼容性：端点不认识请求里的字段 / 参数（典型：litellm/Azure 对 Anthropic-only 字段报错）。 */
 const WIRE_RE =
   /(unknown|unexpected|unsupported|extra|unrecognized).{0,16}(field|parameter|argument|inputs?|property|request param)|extra inputs are not permitted|invalid_request_error[^\n]{0,120}(field|param)/i;
@@ -150,6 +150,9 @@ export function classifyProviderError(input: ProviderErrorInput): ProviderErrorC
   if (status === 404) {
     if (MODEL_NOT_FOUND_RE.test(body)) return { code: 'MODEL_NOT_FOUND', retryable: false, detail };
     return { code: 'ENDPOINT_NOT_FOUND', retryable: false, detail };
+  }
+  if (status === 413 && CONTEXT_TOO_LONG_RE.test(body)) {
+    return { code: 'CONTEXT_TOO_LONG', retryable: false, detail };
   }
   if (status === 400 || status === 422) {
     if (MODEL_NOT_FOUND_RE.test(body)) return { code: 'MODEL_NOT_FOUND', retryable: false, detail };

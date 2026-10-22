@@ -597,7 +597,7 @@ export interface BotGroupGetOptions {
   shownShares?: Array<{ id: string; messageId: string; threadRootId: string; sharerId?: string }>;
 }
 
-export type BotGroupChange = 'created' | 'updated' | 'deleted' | 'messages' | 'round' | 'plan' | 'list';
+export type BotGroupChange = 'created' | 'updated' | 'deleted' | 'messages' | 'round' | 'plan' | 'list' | 'workbench';
 
 export interface BotGroupChangedPayload {
   groupId: string;

@@ -1,4 +1,6 @@
 import path from 'node:path';
+import { mkdtemp, rm } from 'node:fs/promises';
+import os from 'node:os';
 
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
@@ -29,6 +31,7 @@ import {
   type BotGroupLaneTerminal,
 } from '../botGroupChatService.js';
 import { createProviderGroupHeldWorkerTerminals } from '../../provider-group/heldWorkerTerminals.js';
+import { createGroupWorkbenchStore } from '../groupWorkbenchStore.js';
 import { AutoResumeBookkeeping } from '../autoResumeBookkeeping.js';
 import {
   buildPlanDecisionPrompt,
@@ -1541,5 +1544,190 @@ describe('botGroupChatService attachments', () => {
     await harness.service.continuePlan({ groupId, planId: plan.id });
     await waitForIdle(harness, groupId);
     expect(harness.dispatches.at(-1)).toMatchObject({ botId: 'xiaoman', attachments: ['需求.pdf'] });
+  });
+});
+
+describe('botGroupChatService group workbench', () => {
+  beforeEach(() => {
+    h.sqlite = createDatabase();
+  });
+
+  afterEach(() => {
+    h.sqlite?.close();
+  });
+
+  it('runs unstarted tasks in order and keeps going until the queue is empty', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'cindy-group-workbench-service-'));
+    try {
+      let created = 0;
+      const workbench = createGroupWorkbenchStore({
+        root: () => root,
+        createId: () => `workbench-${++created}`,
+      });
+      const workDir = {
+        prepare: vi.fn(async () => ({ ok: true as const, workDir: '/work/group', branch: null, ownerSessionId: null })),
+        snapshot: vi.fn(async () => new Map<string, string>()),
+        changedFiles: vi.fn(async () => []),
+        trashGroupFolder: vi.fn(async () => undefined),
+      };
+      const harness = createHarness((_botId, prompt) =>
+        prompt.includes('First task') ? 'First result' : 'Second result',
+      { workbench, workDir });
+      const groupId = await createGroup(harness);
+
+      await harness.service.updateWorkbench({
+        type: 'create',
+        groupId,
+        title: 'First task',
+        assigneeBotId: 'mimi',
+      });
+      await harness.service.updateWorkbench({
+        type: 'create',
+        groupId,
+        title: 'Second task',
+        assigneeBotId: 'xiaoman',
+      });
+      await harness.service.updateWorkbench({ type: 'start', groupId });
+
+      await vi.waitFor(async () => {
+        const result = await harness.service.getWorkbench(groupId);
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.workbench.running).toBe(false);
+        expect(result.workbench.tasks.map((task) => task.status)).toEqual(['completed', 'completed']);
+      });
+
+      expect(harness.dispatches.map((turn) => turn.botId)).toEqual(['mimi', 'xiaoman']);
+      expect(harness.dispatches[1]!.prompt).toContain('First result');
+      const detail = await harness.service.getGroup(groupId);
+      expect(detail.ok).toBe(true);
+      if (detail.ok) {
+        expect(detail.group.messages.filter((message) => message.authorKind === 'bot').map((message) => message.content))
+          .toEqual(expect.arrayContaining([
+            expect.stringContaining('First task'),
+            expect.stringContaining('Second task'),
+          ]));
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('lets only the organizer create assigned tasks from a group lane', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'cindy-group-workbench-organizer-'));
+    try {
+      let created = 0;
+      const workbench = createGroupWorkbenchStore({
+        root: () => root,
+        createId: () => `organizer-task-${++created}`,
+      });
+      const harness = createHarness(() => 'NO_REPLY', { workbench });
+      const groupId = await createGroup(harness);
+      h.sqlite!.prepare(`INSERT INTO bot_session_links
+        (id, bot_id, session_id, role, route_key) VALUES
+        ('organizer-link', 'mimi', 'organizer-session', 'group', ?),
+        ('other-link', 'xiaoman', 'other-session', 'group', ?)`)
+        .run(`group:${groupId}`, `group:${groupId}`);
+
+      const result = await harness.service.createWorkbenchTasksFromGroup('organizer-session', [
+        { title: '设计登录页', assignee: '小满' },
+        { title: '实现登录页', assignee: '阿布' },
+      ]);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.tasks.map((task) => [task.title, task.assigneeName, task.source])).toEqual([
+          ['设计登录页', '小满', 'organizer'],
+          ['实现登录页', '阿布', 'organizer'],
+        ]);
+      }
+
+      const denied = await harness.service.createWorkbenchTasksFromGroup('other-session', [
+        { title: '越权任务', assignee: '咪咪' },
+      ]);
+      expect(denied).toMatchObject({ ok: false, errorCode: 'PERMISSION_DENIED' });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('records an explicitly mentioned partner as a completed workbench task', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'cindy-group-workbench-mention-'));
+    try {
+      let created = 0;
+      const workbench = createGroupWorkbenchStore({
+        root: () => root,
+        createId: () => `mention-task-${++created}`,
+      });
+      const harness = createHarness(() => '改好了', { workbench });
+      const groupId = await createGroup(harness);
+
+      await harness.service.sendMessage({
+        groupId,
+        text: '修改登录页',
+        mentions: { all: false, botIds: ['xiaoman'] },
+        clientId: 'mention-task',
+      });
+      await waitForIdle(harness, groupId);
+
+      const result = await harness.service.getWorkbench(groupId);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.workbench.tasks).toEqual([
+          expect.objectContaining({
+            title: '修改登录页',
+            assigneeBotId: 'xiaoman',
+            source: 'mention',
+            status: 'completed',
+            result: '改好了',
+          }),
+        ]);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('marks a queue task as timed out from the runtime timeout signal', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'cindy-group-workbench-timeout-'));
+    try {
+      let created = 0;
+      const workbench = createGroupWorkbenchStore({
+        root: () => root,
+        createId: () => `timeout-task-${++created}`,
+      });
+      const workDir = {
+        prepare: vi.fn(async () => ({ ok: true as const, workDir: '/work/group', branch: null, ownerSessionId: null })),
+        snapshot: vi.fn(async () => new Map<string, string>()),
+        changedFiles: vi.fn(async () => []),
+        trashGroupFolder: vi.fn(async () => undefined),
+      };
+      const harness = createHarness(() => null, { workbench, workDir });
+      const groupId = await createGroup(harness);
+      await harness.service.updateWorkbench({
+        type: 'create',
+        groupId,
+        title: 'Long task',
+        assigneeBotId: 'mimi',
+      });
+      await harness.service.updateWorkbench({ type: 'start', groupId });
+      await vi.waitFor(() => expect(harness.dispatches).toHaveLength(1));
+
+      const turn = harness.dispatches[0]!;
+      await harness.service.settleLaneTurn({
+        sessionId: turn.sessionId,
+        activeInputClientId: turn.clientId,
+        outcome: 'error',
+        resultText: '',
+        failureCode: 'RUNTIME_TIMEOUT',
+      });
+
+      await vi.waitFor(async () => {
+        const result = await harness.service.getWorkbench(groupId);
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.workbench.tasks[0]?.status).toBe('timed-out');
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

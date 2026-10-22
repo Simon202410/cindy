@@ -76,6 +76,12 @@ describe('classifyProviderError', () => {
     expect(
       classifyProviderError({ status: 400, bodyText: 'prompt is too long: 250000 tokens' }).code,
     ).toBe('CONTEXT_TOO_LONG');
+    expect(
+      classifyProviderError({
+        status: 413,
+        bodyText: 'Failed to buffer the request body: length limit exceeded',
+      }).code,
+    ).toBe('CONTEXT_TOO_LONG');
     expect(classifyProviderError({ status: 400, bodyText: 'insufficient_quota' }).code).toBe(
       'QUOTA_EXCEEDED',
     );
