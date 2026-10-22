@@ -5512,6 +5512,7 @@ interface ElectronAPI {
     ) => () => void;
     chatServer: import('../shared/botGroupChat').ChatServerApi;
     listBotGroups: () => Promise<import('../shared/botGroupChat').BotGroupListResult>;
+    setBotGroupSource: (source: import('../shared/botGroupChat').BotGroupSource) => Promise<void>;
     getBotGroup: (
       groupId: string,
       options?: import('../shared/botGroupChat').BotGroupGetOptions,

@@ -63,6 +63,7 @@ import {
   type BotGroupPlanView,
   type BotGroupReplyMode,
   type BotGroupSendResult,
+  type BotGroupSource,
   type BotGroupSpeaker,
   type BotGroupSpeakingMode,
   type BotGroupSummary,
@@ -2774,4 +2775,6 @@ export type BotGroupTaskPostResult =
 
 export type BotGroupChatService = ReturnType<typeof createBotGroupChatService> & {
   chatServer?: import('../../shared/botGroupChat.js').ChatServerApi;
+  /** Desktop-only routing override; the data and history stay in their original source. */
+  setGroupSource?: (source: BotGroupSource) => void;
 };

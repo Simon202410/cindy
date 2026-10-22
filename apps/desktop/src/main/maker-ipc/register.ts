@@ -12960,6 +12960,11 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
     assertTrustedAppRendererEvent(event);
     return botGroupChatServiceHolder ? botGroupChatServiceHolder.listGroups() : botGroupNotReady;
   });
+  ipcMain.handle(MAKER_INVOKE.BOT_GROUP_SET_SOURCE, async (event, source: unknown) => {
+    assertTrustedAppRendererEvent(event);
+    if (source !== 'local' && source !== 'server') throwIpcError('INVALID_PARAMS', 'invalid bot group source');
+    botGroupChatServiceHolder?.setGroupSource?.(source);
+  });
   ipcMain.handle(MAKER_INVOKE.BOT_GROUP_GET, async (event, groupId: unknown, options: unknown) => {
     assertTrustedAppRendererEvent(event);
     return botGroupChatServiceHolder ? botGroupChatServiceHolder.getGroup(groupId, options) : botGroupNotReady;

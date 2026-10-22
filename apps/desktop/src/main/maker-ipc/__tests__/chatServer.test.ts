@@ -112,7 +112,7 @@ describe('Chat Server production connection', () => {
   });
   // Fork policy (bot-group-chat.md §1 本机): with localGroups, group chats never touch the server
   // and the 2-member local create rules apply; companions' server connection stays up.
-  it('keeps group chats local and never lists, creates or upgrades server rooms', async () => {
+  it('keeps group chats local until switched to server rooms', async () => {
     vi.useFakeTimers(); fixture.packaged = true; fixture.urls = [];
     fixture.handle.mockImplementation(route => ({ body: route === '/me' ? { actor: { id: 'self' } } : [] }));
     const localGroups = { ...local, listGroups: vi.fn(async () => ({ ok: true, groups: [{ id: 'local-1' }] })),
@@ -122,8 +122,15 @@ describe('Chat Server production connection', () => {
       expect(await service.listGroups()).toEqual({ ok: true, groups: [{ id: 'local-1' }] });
       expect(await service.createGroup({ name: '本机', botIds: ['a', 'b'] })).toEqual({ ok: true, groupId: 'local-2' });
       expect((await service.chatServer!.status()).enabled).toBe(false);
+      service.setGroupSource!('server');
+      expect((await service.chatServer!.status()).enabled).toBe(true);
+      expect(await service.listGroups()).toEqual({ ok: true, groups: [] });
+      expect(localGroups.listGroups).toHaveBeenCalledTimes(1);
+      service.setGroupSource!('local');
+      expect(await service.listGroups()).toEqual({ ok: true, groups: [{ id: 'local-1' }] });
+      expect(localGroups.listGroups).toHaveBeenCalledTimes(2);
       await vi.advanceTimersByTimeAsync(20000);
-      expect(fixture.urls.some(url => /\/conversations(\?|$)/.test(url))).toBe(false);
+      expect(fixture.urls.some(url => /\/conversations(\?|$)/.test(url))).toBe(true);
     } finally { service.dispose(); vi.useRealTimers(); }
   });
   it('refuses a fixture that targets an external server', () => {

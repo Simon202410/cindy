@@ -9100,6 +9100,9 @@
       "unread": "읽지 않은 메시지 {{count}}개",
       "search": "파트너 또는 그룹 채팅 검색",
       "searchPlaceholder": "파트너 또는 그룹 채팅 검색…",
+      "groupSource": {
+        "toggle": "로컬 / 온라인 그룹 전환"
+      },
       "showHidden": "숨긴 동료 표시",
       "hideHidden": "숨긴 동료 접기",
       "hidden": "숨김({{count}})",

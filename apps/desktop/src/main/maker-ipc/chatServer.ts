@@ -39,6 +39,7 @@ import {
   buildBotGroupThreadShareCard, botGroupThreadShareOperationId, readBotGroupThreadShareCard,
   type BotGroupThreadShareView, type BotGroupThreadSummary, type BotGroupThreadUnread,
   type BotGroupDetail, type BotGroupSpeaker, type BotGroupPlanView, type BotGroupFailure, type BotGroupMessageView, type BotGroupAttachment, type ChatServerApi,
+  type BotGroupSource,
   botGroupQuoteAttachmentName, botGroupQuoteExcerpt, botGroupQuoteFromMessage, buildBotGroupQuoteCard, readBotGroupQuote, readBotGroupQuoteCard, type BotGroupQuoteView,
   readBotGroupTaskCard, botGroupMessageSummaryText,
 } from '../../shared/botGroupChat.js';
@@ -278,6 +279,7 @@ const discussionSource = (m: Message) => !m.deleted && m.origin !== 'system' && 
 export function withChatServer(local: BotGroupChatService, deps: BotGroupChatServiceDeps,
   options: { localGroups?: boolean } = {}): BotGroupChatService {
   const localGroups = options.localGroups === true;
+  let groupSource: BotGroupSource = localGroups ? 'local' : 'server';
   const endpoint = () => {
     // Explicit isolated testing remains possible; an installed app never reads it.
     const file = path.join(app.getPath('userData'), 'chat-server-dev.json');
@@ -289,18 +291,19 @@ export function withChatServer(local: BotGroupChatService, deps: BotGroupChatSer
   };
   let baseUrl = endpoint();
   let activeScope = deps.captureOwnerScope?.();
-  let active = createChatServer(local, deps, { baseUrl, localGroups });
+  let active = createChatServer(local, deps, { baseUrl, localGroups, serverGroups: () => groupSource === 'server' });
   const service = () => {
     if (baseUrl !== endpoint() || (activeScope && deps.isOwnerScopeCurrent && !deps.isOwnerScopeCurrent(activeScope))) {
       active.dispose();
       baseUrl = endpoint();
       activeScope = deps.captureOwnerScope?.();
-      active = createChatServer(local, deps, { baseUrl, localGroups });
+      active = createChatServer(local, deps, { baseUrl, localGroups, serverGroups: () => groupSource === 'server' });
     }
     return active;
   };
-  const groups = () => (localGroups ? local : service());
+  const groups = () => (groupSource === 'local' ? local : service());
   return {
+    setGroupSource: source => { groupSource = source; },
     get chatServer() { return service().chatServer; },
     listGroups: (...args) => groups().listGroups(...args),
     getGroup: (...args) => groups().getGroup(...args),
@@ -333,7 +336,8 @@ export function withChatServer(local: BotGroupChatService, deps: BotGroupChatSer
   };
 }
 
-function createChatServer(local: BotGroupChatService, deps: BotGroupChatServiceDeps, config: { baseUrl: string; localGroups?: boolean }): BotGroupChatService {
+function createChatServer(local: BotGroupChatService, deps: BotGroupChatServiceDeps,
+  config: { baseUrl: string; localGroups?: boolean; serverGroups?: () => boolean }): BotGroupChatService {
   const scope = deps.captureOwnerScope?.();
   let disposed = false;
   // Demotion persisted for this owner applies before the server has answered.
@@ -2251,7 +2255,7 @@ function createChatServer(local: BotGroupChatService, deps: BotGroupChatServiceD
       changed(target); return {};
     }),
     // `enabled` tells the create dialog whether new groups are server rooms.
-    status: async () => ({ enabled: !config.localGroups, connected: current() && connected }),
+    status: async () => ({ enabled: config.serverGroups?.() ?? !config.localGroups, connected: current() && connected }),
     thread: input => result(async () => {
       const i = z.object({ groupId: id, rootId: id, before: z.number().int().positive().optional(), sourceMessageIds: z.array(id).optional(),
         markRead: z.boolean().optional() }).parse(input);

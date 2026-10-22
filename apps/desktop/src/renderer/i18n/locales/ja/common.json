@@ -9100,6 +9100,9 @@
       "unread": "{{count}} 件の未読メッセージ",
       "search": "パートナーやグループチャットを検索",
       "searchPlaceholder": "パートナーやグループチャットを検索…",
+      "groupSource": {
+        "toggle": "ローカル / オンライングループを切り替え"
+      },
       "showHidden": "非表示の仲間を表示",
       "hideHidden": "非表示の仲間を閉じる",
       "hidden": "非表示（{{count}}）",

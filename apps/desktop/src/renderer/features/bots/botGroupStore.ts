@@ -22,6 +22,7 @@ import type {
   BotGroupPlanAction,
   BotGroupPlanActionInput,
   BotGroupPlanEditInput,
+  BotGroupSource,
   BotGroupSummary,
 } from '../../../shared/botGroupChat';
 
@@ -38,6 +39,7 @@ const EMPTY_SNAPSHOT: BotGroupListSnapshot = { groups: [], loaded: false };
 let snapshot: BotGroupListSnapshot = EMPTY_SNAPSHOT;
 let owner = getDataOwnerGeneration();
 let generation = 0;
+let currentGroupSource: BotGroupSource = 'local';
 const personalList = new Map<string, { hidden: boolean; revision: number }>();
 const visibleGroups = (groups: readonly BotGroupSummary[]) => groups.filter(group => !personalList.get(group.id)?.hidden);
 let inFlight: Promise<void> | null = null;
@@ -129,6 +131,23 @@ export function refreshBotGroups(): void {
       refreshBotGroups();
     }
   });
+}
+
+/** Switch the main-process group router, then discard any list read from the previous source. */
+export async function setBotGroupSource(source: BotGroupSource): Promise<boolean> {
+  if (currentGroupSource === source) return true;
+  const api = botGroupApi();
+  if (!api?.setBotGroupSource) return false;
+  const requestOwner = getDataOwnerGeneration();
+  await api.setBotGroupSource(source);
+  if (!isDataOwnerGenerationCurrent(requestOwner)) return false;
+  currentGroupSource = source;
+  generation += 1;
+  inFlight = null;
+  refreshQueued = false;
+  applySnapshot(EMPTY_SNAPSHOT);
+  refreshBotGroups();
+  return true;
 }
 
 /**
@@ -235,6 +254,7 @@ export function resetBotGroupStoreForTests(): void {
   unsubscribePush = null;
   syncUsers = 0;
   generation += 1;
+  currentGroupSource = 'local';
   inFlight = null;
   refreshQueued = false;
   cancelPushRefresh();

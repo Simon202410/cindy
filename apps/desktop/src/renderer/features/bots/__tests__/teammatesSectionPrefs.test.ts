@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { readTeammatesSectionCollapsed, writeTeammatesSectionCollapsed } from '../teammatesSectionPrefs';
+import {
+  readTeammatesGroupSource,
+  readTeammatesSectionCollapsed,
+  writeTeammatesGroupSource,
+  writeTeammatesSectionCollapsed,
+} from '../teammatesSectionPrefs';
 
 beforeEach(() => localStorage.clear());
 
@@ -24,5 +29,21 @@ describe('teammates section collapse preference', () => {
   it('treats unknown stored values as the expanded default', () => {
     localStorage.setItem('sidebar.teammatesSection.v1.owner.owner-a', 'sideways');
     expect(readTeammatesSectionCollapsed('owner-a')).toBe(false);
+  });
+});
+
+describe('teammates section group source preference', () => {
+  it('defaults to local and keeps server mode separate per account', () => {
+    expect(readTeammatesGroupSource('owner-a')).toBe('local');
+    writeTeammatesGroupSource('owner-a', 'server');
+    expect(readTeammatesGroupSource('owner-a')).toBe('server');
+    expect(readTeammatesGroupSource('owner-b')).toBe('local');
+  });
+
+  it('treats unknown stored values as local and does not persist without an account', () => {
+    localStorage.setItem('sidebar.teammatesSection.groupSource.v1.owner.owner-a', 'online');
+    expect(readTeammatesGroupSource('owner-a')).toBe('local');
+    writeTeammatesGroupSource(null, 'server');
+    expect(readTeammatesGroupSource(null)).toBe('local');
   });
 });

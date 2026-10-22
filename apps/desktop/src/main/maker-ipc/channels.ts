@@ -826,6 +826,8 @@ export const MAKER_INVOKE = {
   CHAT_SERVER_PREVIEWINVITE: 'maker:chat-server:previewInvite',
   CHAT_SERVER_ACCEPTINVITE: 'maker:chat-server:acceptInvite',
   BOT_GROUP_LIST: 'maker:bot-group:list',
+  /** Desktop test control: route bot-group IPC to local history or Chat Server rooms. */
+  BOT_GROUP_SET_SOURCE: 'maker:bot-group:set-source',
   BOT_GROUP_GET: 'maker:bot-group:get',
   BOT_GROUP_CREATE: 'maker:bot-group:create',
   BOT_GROUP_UPDATE: 'maker:bot-group:update',

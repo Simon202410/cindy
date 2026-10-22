@@ -6209,6 +6209,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     listBotGroups: (): Promise<import('../shared/botGroupChat').BotGroupListResult> =>
       ipcRenderer.invoke('maker:bot-group:list'),
+    setBotGroupSource: (source: import('../shared/botGroupChat').BotGroupSource): Promise<void> =>
+      ipcRenderer.invoke('maker:bot-group:set-source', source),
     getBotGroup: (
       groupId: string,
       options?: import('../shared/botGroupChat').BotGroupGetOptions,

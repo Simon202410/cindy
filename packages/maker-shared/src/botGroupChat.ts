@@ -8,6 +8,9 @@ import type { BotGroupTaskCardView } from './botGroupTask';
 export * from './botGroupQuote';
 export * from './botGroupTask';
 
+/** Desktop's group list source; local and server groups keep separate history. */
+export type BotGroupSource = 'local' | 'server';
+
 export const BOT_GROUP_MIN_MEMBERS = 2;
 export const BOT_GROUP_MAX_MEMBERS = 6;
 export const BOT_GROUP_NAME_MAX_CHARS = 40;

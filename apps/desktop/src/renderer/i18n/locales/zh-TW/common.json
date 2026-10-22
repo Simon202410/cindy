@@ -9100,6 +9100,9 @@
       "unread": "{{count}} 則未讀訊息",
       "search": "搜尋夥伴或群聊",
       "searchPlaceholder": "搜尋夥伴或群聊…",
+      "groupSource": {
+        "toggle": "切換本地群 / 線上群"
+      },
       "showHidden": "顯示隱藏的夥伴",
       "hideHidden": "收起隱藏的夥伴",
       "hidden": "已隱藏（{{count}}）",

@@ -42,6 +42,8 @@ const mocks = vi.hoisted(() => ({
   setBotHidden: vi.fn(async () => undefined),
   setBotPinned: vi.fn(async () => undefined),
   duplicateBotProfile: vi.fn(async () => ({ id: 'copy' })),
+  listBotGroups: vi.fn(async () => ({ ok: true as const, groups: [] })),
+  setBotGroupSource: vi.fn(async () => undefined),
   /** 灵动岛活动镜像:sessionId -> phase。侧栏据此显示「正在输入…」。 */
   islandActivity: new Map<string, { sessionId: string; phase: string; compactDetail?: string }>(),
   cloud: { enabled: false, selfDeviceId: null, humanActorId: null, actors: [], demotedBotIds: [] } as import('../../../../shared/companionCloud').CompanionCloudSnapshot,
@@ -98,7 +100,7 @@ import { BotConnectionStatus } from '../BotConnectionStatus';
 import { resetBotMarketEntryHintForTest } from '../botMarketEntryHint';
 import { markBotRead, resetBotReadStateForTests } from '../botReadState';
 import { sidebarOwnerStorageKey } from '@/lib/sidebarOwnerStorage';
-import { readTeammatesSectionCollapsed } from '../teammatesSectionPrefs';
+import { readTeammatesGroupSource, readTeammatesSectionCollapsed } from '../teammatesSectionPrefs';
 
 interface BotFixture {
   id: string;
@@ -145,9 +147,13 @@ beforeEach(() => {
   mocks.setBotHidden.mockReset();
   mocks.setBotPinned.mockReset();
   mocks.duplicateBotProfile.mockReset();
+  mocks.listBotGroups.mockReset();
+  mocks.setBotGroupSource.mockReset();
   mocks.setBotHidden.mockResolvedValue(undefined);
   mocks.setBotPinned.mockResolvedValue(undefined);
   mocks.duplicateBotProfile.mockResolvedValue({ id: 'copy' });
+  mocks.listBotGroups.mockResolvedValue({ ok: true as const, groups: [] });
+  mocks.setBotGroupSource.mockResolvedValue(undefined);
   mocks.health = new Map();
   mocks.unread = {};
   mocks.groupMessages = new Map();
@@ -171,6 +177,11 @@ beforeEach(() => {
             };
           },
         },
+      },
+      maker: {
+        listBotGroups: mocks.listBotGroups,
+        setBotGroupSource: mocks.setBotGroupSource,
+        onBotGroupChanged: () => () => {},
       },
     },
   });
@@ -303,6 +314,20 @@ describe('one Cindy entry across devices', () => {
     expect(screen.getAllByTestId('cindy-device-row')).toHaveLength(1);
     expect(screen.queryByText('bots.devicePicker.local')).toBeNull();
     expect(screen.getByText('Cloud preview')).toBeTruthy();
+  });
+});
+
+describe('group source switch', () => {
+  it('starts on local groups and switches to server groups', async () => {
+    await renderSidebar();
+    const toggle = screen.getByRole('switch', { name: 'bots.list.groupSource.toggle' });
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+
+    fireEvent.click(toggle);
+
+    await waitFor(() => expect(mocks.setBotGroupSource).toHaveBeenLastCalledWith('server'));
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    expect(readTeammatesGroupSource('fixture-owner')).toBe('server');
   });
 });
 

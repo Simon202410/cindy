@@ -9134,6 +9134,9 @@
       "unread": "{{count}} unread messages",
       "search": "Search teammates or group chats",
       "searchPlaceholder": "Search teammates or group chats…",
+      "groupSource": {
+        "toggle": "Switch local / online groups"
+      },
       "showHidden": "Show hidden teammates",
       "hideHidden": "Collapse hidden teammates",
       "hidden": "Hidden ({{count}})",
