@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  canonicalizeBotGroupMentionLabels,
   filterBotGroupMentionCandidates,
   findBotGroupMentionQuery,
   insertBotGroupMention,
@@ -74,6 +75,19 @@ describe('resolveBotGroupMentions', () => {
         tracked: [{ botId: 'b', label: '小满', start: 0 }],
       }).botIds,
     ).toEqual(['b']);
+  });
+});
+
+describe('canonicalizeBotGroupMentionLabels', () => {
+  it('restores unique group display names without guessing duplicated names', () => {
+    const roster = [
+      { name: '产品经理', canonicalName: '产品经理 (xuzidev)' },
+      { name: '开发', canonicalName: '开发 (chris)' },
+      { name: '同名', canonicalName: '同名 (a)' },
+      { name: '同名', canonicalName: '同名 (b)' },
+    ];
+    expect(canonicalizeBotGroupMentionLabels('@产品经理 请接手，@开发 跟进；@同名 不用改', roster))
+      .toBe('@产品经理 (xuzidev) 请接手，@开发 (chris) 跟进；@同名 不用改');
   });
 });
 

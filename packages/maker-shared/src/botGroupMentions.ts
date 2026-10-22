@@ -34,6 +34,9 @@ export interface BotGroupMentionQuery {
 /** 候选词最长这么多字；再长就当成普通正文，不再弹候选。 */
 const MAX_MENTION_QUERY_CHARS = 32;
 
+/** Every localized 「所有人」 label a group composer can insert, plus common typed forms. */
+export const BOT_GROUP_EVERYONE_LABELS = ['所有人', '所有伙伴', '全員', '모두', 'everyone', 'all'] as const;
+
 /** `@` 紧跟在这些字符后面时是邮箱或标识符的一部分，不是点名。 */
 const WORD_BEFORE_AT = /[A-Za-z0-9._%+-]/;
 const LATIN_WORD_CHAR = /[A-Za-z0-9_]/;
@@ -142,6 +145,36 @@ export function resolveBotGroupMentions(
   }
   // 按正文里点名的先后输出：宿主直接按这个顺序轮流发言（bot-group-chat.md §4.1）。
   return { all, botIds };
+}
+
+/**
+ * A companion result carries no structured recipient IDs. Restore the group-facing
+ * label so Chat Server can route it; duplicated short names are never guessed.
+ */
+export function canonicalizeBotGroupMentionLabels(
+  text: string,
+  members: ReadonlyArray<{ name: string; canonicalName: string }>,
+): string {
+  const entries = buildLabelEntries(
+    members.map((member, index) => ({ botId: String(index), name: member.name, displayName: member.canonicalName })),
+    [],
+    [],
+  );
+  const replacements = scanMentionTokens(text, entries).flatMap((token) => {
+    if (token.entry.botIds.length !== 1) return [];
+    const canonicalName = members[Number(token.entry.botIds[0])]?.canonicalName;
+    return canonicalName && canonicalName !== token.entry.label
+      ? [{ start: token.start, end: token.end, canonicalName }]
+      : [];
+  });
+  if (replacements.length === 0) return text;
+  let cursor = 0;
+  let result = '';
+  for (const replacement of replacements) {
+    result += text.slice(cursor, replacement.start) + `@${replacement.canonicalName}`;
+    cursor = replacement.end;
+  }
+  return result + text.slice(cursor);
 }
 
 /** Move intact picked tokens with a text edit; forget tokens the edit replaces. */

@@ -2528,6 +2528,8 @@ Chat Server `/me` 追加 `capabilities.groupDiscussionParity: 1`。Desktop 只�
 可选 `mentionsAll`、`planningMode`，辅助判断后用 `continue({automatic:true})`，停止判断用
 `messages/:id/cancel-planning`。旧服务器继续收到旧形状；能力协商并不恢复旧服务端缺失的行为。
 整个服务端集群升级后再发布客户端，不能在新旧副本混用时提前承诺该能力。
+伙伴完成群执行时，`complete` 可带可选 `mentions: string[]`（Actor ID），让伙伴回复里的
+`@伙伴` 继续路由；旧服务端以 400／422 拒收该字段时，客户端用同一 operationId 回退旧形状。
 
 领取执行追加可选 `attachment_after_seq`，按伙伴/群/授权版本/分工步骤隔离成功投递水位。
 缺字段时沿用旧读取范围；新客户端以此翻页收集未见附件，保留每轮 40 个上限及缺失名称提示。

@@ -413,6 +413,22 @@ describe('botGroupChatService', () => {
     expect(harness.dispatches).toEqual([]);
   });
 
+  // Regression: in a mention-only group a Bot's own 「@小满」 used to wake nobody (§4.1).
+  it('a Bot that @-mentions a teammate hands it the next turn, and both join 继续讨论', async () => {
+    const replies: Record<string, string[]> = { mimi: ['@小满 你来出个配色', 'NO_REPLY'], xiaoman: ['@咪咪 配色好了'] };
+    const harness = createHarness((botId) => replies[botId]?.shift() ?? 'NO_REPLY');
+    const groupId = await createGroup(harness);
+    expect(await harness.service.updateGroup({ groupId, replyMode: 'mentioned' })).toEqual({ ok: true });
+    await harness.service.sendMessage({ groupId, text: '@咪咪 安排一下', mentions: { all: false, botIds: [] }, clientId: 'c-1' });
+    const group = await waitForIdle(harness, groupId);
+    expect(harness.dispatches.map((call) => call.botId)).toEqual(['mimi', 'xiaoman', 'mimi']);
+    expect(harness.dispatches[1]!.prompt).toContain('Your teammate 咪咪 mentioned you');
+    expect(group.messages.find((m) => m.content === '@小满 你来出个配色')?.mentions).toEqual({ all: false, botIds: ['xiaoman'] });
+    expect(await harness.service.continueRound(groupId)).toEqual({ ok: true });
+    await waitForIdle(harness, groupId);
+    expect(harness.dispatches.slice(3).map((call) => call.botId)).toEqual(['mimi', 'xiaoman']);
+  });
+
   it('caps a round at 10 Bot messages', async () => {
     const harness = createHarness((botId, _prompt, index) => `${botId} #${index}`);
     const created = await harness.service.createGroup({

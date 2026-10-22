@@ -12642,7 +12642,8 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
     },
     log,
   };
-  botGroupChatServiceHolder = withChatServer(createBotGroupChatService(botGroupChatDeps), botGroupChatDeps);
+  // This fork keeps group chats on this computer (bot-group-chat.md §1).
+  botGroupChatServiceHolder = withChatServer(createBotGroupChatService(botGroupChatDeps), botGroupChatDeps, { localGroups: true });
   unsubscribeCompanionCloudBroadcast?.();
   unsubscribeCompanionCloudBroadcast = companionHomes.onChange((snapshot) => {
     const scope = captureDataOwnerBroadcastScope();
