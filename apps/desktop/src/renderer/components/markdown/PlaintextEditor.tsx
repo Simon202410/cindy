@@ -1196,12 +1196,12 @@ function adjustEditorFontSize(view: EditorView, delta: -1 | 1): boolean {
     root.style.getPropertyValue('--app-editor-font-size'),
   );
   const savedOverride = Number.parseFloat(
-    String(window.electronAPI?.appearanceSettings?.getSync?.().editorFontSize ?? ''),
+    String(window.electronAPI?.appearanceSettings?.getSync?.()?.editorFontSize ?? ''),
   );
   const computed = Number.parseFloat(getComputedStyle(view.contentDOM).fontSize);
   const current = [rootOverride, savedOverride, computed].find(Number.isFinite);
   const next = clampAppearanceCodeSize(
-    (Number.isFinite(current) ? current : DEFAULT_APPEARANCE_SETTINGS.codeSize) + delta,
+    (current ?? DEFAULT_APPEARANCE_SETTINGS.codeSize) + delta,
   );
   const previous = root.style.getPropertyValue('--app-editor-font-size');
   const apply = (value: string | null) => {
