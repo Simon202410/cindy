@@ -1256,7 +1256,7 @@ function BotGroupChatContent({ groupId }: { groupId: string }) {
         draftKey={attachmentScope}
         members={group.members}
         running={running}
-        planState={botGroupComposerPlanState(openPlan)}
+        planState={botGroupComposerPlanState(openPlan, group.replyMode)}
         divisionAvailable={!group.singleSpeaker}
         attachments={attachmentState}
         attachmentScope={attachmentScope}
