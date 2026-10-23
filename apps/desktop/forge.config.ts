@@ -212,6 +212,9 @@ const NATIVE_RUNTIME_DEPS = [
   // 无需带闭包。注: 这是 vendored runtime 里仅有的两个运行时外部 require 之一
   // (另一个是 playwright-core),已全覆盖。
   'undici',
+  // turndown 在 browser-recipes chunk 中仍保留 CommonJS require，必须把它的
+  // DOM 运行时放在 app.asar/node_modules 顶层，否则 packaged 主进程启动即退出。
+  '@mixmark-io/domino',
 ];
 
 /**
