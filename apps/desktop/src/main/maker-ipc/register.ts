@@ -13387,7 +13387,17 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
     },
     dispatch: async (input) => {
       const result = await dispatchBotSessionMessage({
+        autoReviewUserText: {
+          kind: 'agent-request',
+          request: {
+            userText: input.userRequest,
+            sessionId: input.taskId,
+            clientId: `bot-task-exchange:${input.bridgeId}:sent`,
+            ownerVerified: true,
+          },
+        },
         targetSessionId: input.botSessionId,
+        dispatcherSessionId: input.taskId,
         clientId: `bot-task-exchange:${input.bridgeId}:request`,
         message: input.message,
         persistedContent: input.persistedContent,

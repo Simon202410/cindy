@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
 import { MarkdownRenderer } from '@/components/chat/MarkdownRenderer';
+import { openTaskPartnerTab } from '@/features/right-sidebar/lib/openTaskPartnerTab';
 import { useAgentIslandActivity } from '@/state/agentIslandActivity';
 import { readBotTaskExchangeMeta } from '../../../shared/botTaskExchange';
 import { BotAvatar } from './BotAvatar';
@@ -33,6 +34,24 @@ function BotTaskExchangeCardBody({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const activity = useAgentIslandActivity(meta.partnerSessionId ?? '');
+  const openPartner = async () => {
+    const partnerSessionId = meta.partnerSessionId
+      ?? (sessionId
+        ? await window.electronAPI.localDb.bots.workbench
+          .getTaskPartner(meta.botId, sessionId)
+          .catch(() => null)
+        : null);
+    if (sessionId && partnerSessionId) {
+      void openTaskPartnerTab({
+        parentSessionId: sessionId,
+        sessionId: partnerSessionId,
+        botId: meta.botId,
+        botName: meta.botName,
+      });
+      return;
+    }
+    navigate(`/bots/${encodeURIComponent(meta.botId)}`);
+  };
   const profile = useBotProfiles().find((bot) => bot.id === meta.botId);
   const bot = profile ?? {
     id: meta.botId,
@@ -71,7 +90,7 @@ function BotTaskExchangeCardBody({
           className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--text-tertiary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)]"
           aria-label={t('chat.taskPartner.open', { name: meta.botName })}
           title={t('chat.taskPartner.open', { name: meta.botName })}
-          onClick={() => navigate(`/bots/${encodeURIComponent(meta.botId)}`)}
+          onClick={() => void openPartner()}
         >
           <SquareArrowOutUpRight size={13} aria-hidden="true" />
         </button>
@@ -93,10 +112,14 @@ function BotTaskExchangeCardBody({
         ) : null}
       </div>
       {status ? (
-        <p className="mt-1.5 flex items-center justify-end gap-1 text-11 text-[var(--text-tertiary)]">
+        <button
+          type="button"
+          onClick={() => void openPartner()}
+          className="mt-1.5 ml-auto flex items-center justify-end gap-1 rounded-full px-1 text-11 text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)]"
+        >
           {status}
           {sent && meta.status !== 'failed' ? <ArrowRight size={11} aria-hidden="true" /> : null}
-        </p>
+        </button>
       ) : null}
     </div>
   );

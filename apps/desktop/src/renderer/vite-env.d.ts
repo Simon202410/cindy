@@ -5026,6 +5026,8 @@ interface ElectronAPI {
         followScopes: () => Promise<Array<{ botId: string; sessionIds?: string[]; delegatedSessionIds?: string[] }>>;
         /** 用户新建任务时指定的负责伙伴；任务发出后立即写入逐任务责任。 */
         assignTask: (botId: string, taskId: string) => Promise<{ botId: string; taskId: string }>;
+        /** Resolve the isolated task-partner lane for cards persisted before lanes were recorded inline. */
+        getTaskPartner: (botId: string, taskId: string) => Promise<string | null>;
       };
       /** 伙伴自主跟进：工作台「一眼」投影与账号级「自动跟进所有任务」设置（shared/botAutonomy.ts）。 */
       autonomy: {

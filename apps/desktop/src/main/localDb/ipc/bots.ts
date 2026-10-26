@@ -2941,6 +2941,22 @@ export function registerBotIpc(): void {
     broadcastBotWorkbenchChanged(botId);
     return { botId, taskId };
   });
+  ipcMain.handle('local-db:bots:workbench:get-task-partner', async (event, rawBotId: unknown, rawTaskId: unknown) => {
+    assertTrustedAppRendererEvent(event);
+    const botId = readText(rawBotId, 'botId', 128, true);
+    const taskId = readText(rawTaskId, 'taskId', 256, true);
+    const [link] = await getDbClient().drizzle
+      .select({ sessionId: botSessionLinks.sessionId })
+      .from(botSessionLinks)
+      .where(and(
+        eq(botSessionLinks.botId, botId),
+        eq(botSessionLinks.role, 'thread'),
+        eq(botSessionLinks.routeKey, taskPartnerRouteKey(taskId)),
+        isNull(botSessionLinks.archivedAt),
+      ))
+      .limit(1);
+    return link?.sessionId ?? null;
+  });
   // 工作台详情视图:只读一件任务的最近内容(有界)。范围限于该伙伴已接手的项目,
   // 外部会话只读转录尾部,不写库、不导入。
   ipcMain.handle('local-db:bots:workbench:read-task', async (event, rawBotId: unknown, rawTaskId: unknown) => {

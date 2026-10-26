@@ -18,6 +18,7 @@ import './review';
 import './orca-workers';
 import './subagents';
 import './side-chat';
+import './task-partner';
 import './background-tasks';
 import './resource-usage';
 import './routines';

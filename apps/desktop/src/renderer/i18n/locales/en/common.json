@@ -11626,6 +11626,7 @@
       "failed": "Not delivered to the teammate",
       "sendFailed": "The message was not delivered to the teammate. Try again.",
       "open": "Open {{name}}'s conversation",
+      "tabTitle": "Teammate chat",
       "attachmentOnly": "Please review these attachments.",
       "attachments": "{{count}} attachment(s)"
     },

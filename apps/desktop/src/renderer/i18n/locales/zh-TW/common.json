@@ -11585,6 +11585,7 @@
       "failed": "沒有送達夥伴",
       "sendFailed": "訊息沒有送達夥伴，請重試",
       "open": "開啟 {{name}} 的對話",
+      "tabTitle": "夥伴會話",
       "attachmentOnly": "請查看這些附件。",
       "attachments": "{{count}} 個附件"
     },

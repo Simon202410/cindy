@@ -32,6 +32,7 @@ export interface BotTaskExchangeDeps {
     botSessionId: string;
     taskId: string;
     bridgeId: string;
+    userRequest: string;
     message: string;
     persistedContent: string;
     files?: BotTaskExchangeFile[];
@@ -163,6 +164,7 @@ export function createBotTaskExchangeService(deps: BotTaskExchangeDeps) {
         botSessionId: partnerSession.sessionId,
         taskId,
         bridgeId,
+        userRequest: body,
         message: context,
         persistedContent: `[来自任务「${task.title || taskId}」]\n\n${body}`,
         files,

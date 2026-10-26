@@ -11585,6 +11585,7 @@
       "failed": "没有送达伙伴",
       "sendFailed": "消息没有送达伙伴，请重试",
       "open": "打开 {{name}} 的对话",
+      "tabTitle": "伙伴会话",
       "attachmentOnly": "请查看这些附件。",
       "attachments": "{{count}} 个附件"
     },

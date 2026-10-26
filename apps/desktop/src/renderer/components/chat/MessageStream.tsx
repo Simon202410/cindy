@@ -1492,7 +1492,9 @@ function isRenderTurnBoundary(message: ChatMessage): boolean {
     message.role === 'assistant' &&
     (message.systemCardType === 'cindy-make' ||
       message.systemCardType === 'cindy-make-doctor' ||
-      message.systemCardType === 'review')
+      message.systemCardType === 'review' ||
+      (message.systemCardType === 'bot-task-exchange' &&
+        message.systemCardData?.direction === 'sent'))
   );
 }
 

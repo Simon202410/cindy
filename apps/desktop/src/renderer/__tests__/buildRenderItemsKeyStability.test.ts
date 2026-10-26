@@ -721,6 +721,57 @@ describe('buildRenderItems — key stability', () => {
     expect(cardIndex).toBeGreaterThan(changeIndex);
   });
 
+  it('places turn changes before a task-partner exchange', () => {
+    const sent = {
+      ...mkAssistant('partner-sent', ''),
+      systemCardType: 'bot-task-exchange' as const,
+      systemCardData: { direction: 'sent' },
+    };
+    const reply = {
+      ...mkAssistant('partner-reply', ''),
+      systemCardType: 'bot-task-exchange' as const,
+      systemCardData: { direction: 'received' },
+    };
+    const changeSet: TurnChangeSetSummary = {
+      id: 'cs-before-partner',
+      sessionId: 's1',
+      anchorClientId: 'u1',
+      provider: 'pi',
+      providerTurnId: null,
+      cwd: 'C:/work',
+      state: 'complete',
+      workspaceState: 'applied',
+      isReversible: true,
+      incompleteReasons: [],
+      createdAt: 1,
+      completedAt: 2,
+      files: [{
+        id: 'turn-1:a.ts',
+        path: 'a.ts',
+        oldPath: null,
+        status: 'modified',
+        additions: 1,
+        deletions: 0,
+      }],
+      fileCount: 1,
+      additions: 1,
+      deletions: 0,
+    };
+
+    const { items } = buildRenderItems(
+      [mkUser('u1'), mkAssistant('a1'), sent, reply],
+      undefined,
+      undefined,
+      { turnChangeSets: [changeSet] },
+    );
+    const answerIndex = items.findIndex((item) => item.key === 'msg-a1');
+    const changeIndex = items.findIndex((item) => item.type === 'turn_changes');
+    const sentIndex = items.findIndex((item) => item.key === 'msg-partner-sent');
+
+    expect(answerIndex).toBeLessThan(changeIndex);
+    expect(changeIndex).toBeLessThan(sentIndex);
+  });
+
   it('hides all zero-file change cards because they have no reviewable content', () => {
     const base: TurnChangeSetSummary = {
       id: 'cs-base',

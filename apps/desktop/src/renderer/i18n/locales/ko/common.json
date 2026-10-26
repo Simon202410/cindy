@@ -11585,6 +11585,7 @@
       "failed": "파트너에게 전달되지 않았습니다",
       "sendFailed": "메시지가 파트너에게 전달되지 않았습니다. 다시 시도하세요.",
       "open": "{{name}} 대화 열기",
+      "tabTitle": "파트너 대화",
       "attachmentOnly": "첨부 파일을 확인해 주세요.",
       "attachments": "첨부 파일 {{count}}개"
     },

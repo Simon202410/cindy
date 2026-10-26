@@ -5877,6 +5877,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
           ipcRenderer.invoke('local-db:bots:workbench:follow-scopes'),
         assignTask: (botId: string, taskId: string): Promise<unknown> =>
           ipcRenderer.invoke('local-db:bots:workbench:assign-task', botId, taskId),
+        getTaskPartner: (botId: string, taskId: string): Promise<string | null> =>
+          ipcRenderer.invoke('local-db:bots:workbench:get-task-partner', botId, taskId),
       },
       /** 伙伴自主跟进：工作台「一眼」与「自动跟进所有任务」设置（shared/botAutonomy.ts）。 */
       autonomy: {
