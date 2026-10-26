@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { MessageCircle } from 'lucide-react';
 
 import { WINDOW_NO_DRAG_STYLE } from '@/components/layout/windowDrag';
 import { Tip } from '@/components/ui/tooltip';
@@ -32,6 +33,7 @@ export function TaskPartnerRail({
     if (activeBotId && !bots.some((bot) => bot.id === activeBotId)) onSelect(null);
   }, [activeBotId, bots, onSelect]);
   if (bots.length === 0) return null;
+  const defaultActive = activeBotId == null;
 
   return (
     <div
@@ -40,6 +42,25 @@ export function TaskPartnerRail({
       className="flex min-h-6 items-center gap-0.5"
       data-testid="task-partner-rail"
     >
+      <Tip text={t('chat.taskPartner.defaultTarget')} side="top" delay={0}>
+        <button
+          type="button"
+          disabled={disabled}
+          aria-pressed={defaultActive}
+          aria-label={t('chat.taskPartner.defaultTarget')}
+          style={WINDOW_NO_DRAG_STYLE}
+          onClick={() => onSelect(null)}
+          className={cn(
+            'inline-flex h-6 w-6 items-center justify-center rounded-full transition-[background-color,opacity,filter] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-40',
+            defaultActive
+              ? 'bg-[var(--surface-chip)] text-[var(--text-primary)]'
+              : 'text-[var(--text-tertiary)] opacity-45 grayscale hover:bg-[var(--surface-hover)] hover:opacity-75',
+          )}
+        >
+          <MessageCircle size={13} strokeWidth={1.8} />
+        </button>
+      </Tip>
+      <span aria-hidden="true" className="mx-0.5 h-3.5 w-px bg-[var(--border-default)]" />
       {bots.map((bot) => {
         const active = bot.id === activeBotId;
         return (

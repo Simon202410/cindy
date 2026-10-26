@@ -59,9 +59,12 @@ function BotTaskExchangeCardBody({
       data-session-id={sessionId}
     >
       <div className="flex items-center gap-2 px-1 text-12 text-[var(--text-secondary)]">
-        <BotAvatar bot={bot} size="xs" className="h-4 w-4 text-10" />
-        <span className="min-w-0 flex-1 truncate">
-          {sent ? t('chat.taskPartner.sent', { name: meta.botName }) : meta.botName}
+        {sent ? <span className="shrink-0">{t('chat.taskPartner.sent')}</span> : null}
+        <BotAvatar bot={bot} size="xs" className={sent ? 'h-4 w-4 text-10' : 'h-5 w-5 text-10'} />
+        <span className={sent ? 'min-w-0 flex-1 truncate' : 'min-w-0 flex-1 truncate font-medium text-[var(--text-primary)]'}>
+          {sent
+            ? meta.botName
+            : t('chat.taskPartner.replyFrom', { name: meta.botName })}
         </span>
         <button
           type="button"
