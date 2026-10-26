@@ -70,12 +70,18 @@ import {
 import { syncBotProfileFromFolder } from '../../maker-ipc/botProfileFolderSync.js';
 import { requestBotRuntimeEpochRefresh } from '../../maker-ipc/botRuntimeEpochRefreshSignal.js';
 import { createLogger } from '../../logger.js';
-import { collectTaskResponsibilityScopes } from '../../maker-ipc/botTaskResponsibility.js';
+import {
+  canAssignTaskResponsibility,
+  collectTaskResponsibilityScopes,
+  setTaskResponsibility,
+} from '../../maker-ipc/botTaskResponsibility.js';
 import {
   readBotWorkbenchTaskForOwner,
   readBotResponsibilityScope,
   readBotResponsibleSessionIds,
 } from '../../maker-ipc/botWorkbenchTools.js';
+import { broadcastBotWorkbenchChanged } from '../../maker-ipc/botWorkbenchService.js';
+import { companionHomes, isCompanionShadowed } from '../../companion-cloud/homes.js';
 import {
   NEW_BOT_DEFAULT_PI_EFFORT,
   NEW_BOT_DEFAULT_PI_MODEL,
@@ -121,6 +127,7 @@ import { normalizeBotWelcomeContext, type BotWelcomeContext } from '../../../sha
 import { broadcastBotRemoteResourceChanged } from '../../maker-ipc/botRemoteResourceInvalidation.js';
 import { routineTools } from '../../routines/service.js';
 import { createBotMemoryService } from '../../maker-ipc/botMemoryService.js';
+import { TASK_PARTNER_ROUTE_PREFIX, taskPartnerRouteKey } from '../../../shared/botTaskExchange.js';
 
 const log = createLogger('bots');
 
@@ -568,6 +575,130 @@ export async function ensureBotChannelLaneSession(input: {
 export type EnsureBotDmThreadResult =
   | { ok: true; sessionId: string; created: boolean }
   | { ok: false; errorCode: 'BOT_UNAVAILABLE' | 'NO_MODEL' | 'ROOT_UNAVAILABLE'; message: string };
+
+export type EnsureBotTaskPartnerResult =
+  | { ok: true; sessionId: string; created: boolean }
+  | { ok: false; errorCode: 'BOT_UNAVAILABLE' | 'NO_MODEL' | 'TASK_UNAVAILABLE'; message: string };
+
+/** One isolated hidden lane per ordinary task and Bot; never the Bot's canonical history. */
+export async function ensureBotTaskPartnerLaneSession(input: {
+  botId: string;
+  taskId: string;
+}): Promise<EnsureBotTaskPartnerResult> {
+  const owner = captureBotOperationOwner();
+  const client = getDbClient();
+  const db = client.drizzle;
+  const routeKey = taskPartnerRouteKey(input.taskId);
+  const [existing] = await db
+    .select({ sessionId: botSessionLinks.sessionId })
+    .from(botSessionLinks)
+    .innerJoin(sessions, eq(sessions.id, botSessionLinks.sessionId))
+    .where(and(
+      eq(botSessionLinks.botId, input.botId),
+      eq(botSessionLinks.role, 'thread'),
+      eq(botSessionLinks.routeKey, routeKey),
+      isNull(botSessionLinks.archivedAt),
+      eq(sessions.source, 'bot'),
+      eq(sessions.status, 'active'),
+    ))
+    .limit(1);
+  if (existing) {
+    const [parent] = await db.select({ title: sessions.title }).from(sessions)
+      .where(eq(sessions.id, input.taskId)).limit(1);
+    if (parent?.title) {
+      await db.update(sessions).set({ title: parent.title, updatedAt: Date.now() })
+        .where(eq(sessions.id, existing.sessionId));
+    }
+    await syncBotLanePermission(existing.sessionId);
+    owner.assertCurrent();
+    return { ok: true, sessionId: existing.sessionId, created: false };
+  }
+  const [[task], [profile]] = await Promise.all([
+    db.select({
+      title: sessions.title,
+      status: sessions.status,
+      workingDir: sessions.workingDir,
+      workspaceKind: sessions.workspaceKind,
+      remoteHostId: sessions.remoteHostId,
+    }).from(sessions).where(eq(sessions.id, input.taskId)).limit(1),
+    db.select().from(botProfiles).where(eq(botProfiles.id, input.botId)).limit(1),
+  ]);
+  if (!task || task.status !== 'active' || task.remoteHostId) {
+    return { ok: false, errorCode: 'TASK_UNAVAILABLE', message: '这件任务当前不能启用伙伴协作' };
+  }
+  if (!profile || profile.status !== 'active') {
+    return { ok: false, errorCode: 'BOT_UNAVAILABLE', message: '伙伴当前不可用' };
+  }
+  const [profileVersion] = await db
+    .select()
+    .from(botProfileVersions)
+    .where(and(
+      eq(botProfileVersions.botId, input.botId),
+      eq(botProfileVersions.version, profile.currentVersion),
+    ))
+    .limit(1);
+  if (!profileVersion) return { ok: false, errorCode: 'BOT_UNAVAILABLE', message: '伙伴资料版本不存在' };
+  const config = parseJson(profileVersion.capabilitiesJson);
+  const primaryRoute = (await readEffectiveBotModelChain(config))[0] ?? null;
+  if (!primaryRoute) return { ok: false, errorCode: 'NO_MODEL', message: '伙伴还没有可用模型' };
+  const workingDir = task.workingDir
+    ?? await ensureBotWorkspaceDir(owner.userDataDir, input.botId, app.getPath('userData'));
+  const now = Date.now();
+  const sessionId = resolveBusinessSessionId(undefined);
+  const row = {
+    ...sessionCreateToRow(
+      sessionId,
+      {
+        workspaceKind: task.workspaceKind,
+        workingDir,
+        ...botSessionRouteFields(config, primaryRoute),
+        remoteHostId: undefined,
+        source: 'bot',
+      },
+      now,
+    ),
+    title: task.title || input.taskId,
+  };
+  owner.assertCurrent();
+  let result: BotGroupsCreateLaneResult;
+  try {
+    result = await client.tx<BotGroupsCreateLaneResult>('bots.createTaskPartnerLane', {
+      botId: input.botId,
+      routeKey,
+      session: {
+        id: row.id,
+        title: row.title,
+        workingDir: row.workingDir ?? null,
+        workspaceKind: row.workspaceKind,
+        model: row.model,
+        effort: row.effort,
+        fastMode: row.fastMode,
+        permissionMode: row.permissionMode,
+        agentKind: row.agentKind,
+        remoteHostId: null,
+        providerId: row.providerId ?? null,
+        agentDeviceId: row.agentDeviceId ?? null,
+        extraDirs: row.extraDirs,
+        source: row.source,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      },
+    });
+  } catch (cause) {
+    const code = (cause as { code?: unknown } | null)?.code;
+    const message = cause instanceof Error ? cause.message : '';
+    if (code === 'BOT_UNAVAILABLE' || message.includes('伙伴当前不可用')) {
+      return { ok: false, errorCode: 'BOT_UNAVAILABLE', message: '伙伴当前不可用' };
+    }
+    throw cause;
+  }
+  owner.assertCurrent();
+  if (result.permissionRepairCanonicalSessionId) {
+    await syncBotLinkedLanePermissions(result.permissionRepairCanonicalSessionId);
+    owner.assertCurrent();
+  }
+  return { ok: true, sessionId: result.sessionId, created: result.created };
+}
 
 /**
  * The Bot's hidden lane for one private-chat topic (`role = 'thread'`,
@@ -1149,11 +1280,12 @@ async function readProfile(
   }
   const canonicalResolution = await reconcileCanonicalLink(botId, client);
   const canonicalSessionId = canonicalResolution.canonicalSessionId;
-  const links = await db
+  const links = (await db
     .select()
     .from(botSessionLinks)
     .where(eq(botSessionLinks.botId, botId))
-    .orderBy(desc(botSessionLinks.createdAt));
+    .orderBy(desc(botSessionLinks.createdAt)))
+    .filter((link) => !link.routeKey?.startsWith(TASK_PARTNER_ROUTE_PREFIX));
   const sessionRows = links.length
     ? await db
         .select()
@@ -2696,6 +2828,39 @@ export function registerBotIpc(): void {
     );
     owner.assertCurrent();
     return scopes;
+  });
+  // New-task UI: attach the selected teammate before the first send.
+  ipcMain.handle('local-db:bots:workbench:assign-task', async (event, rawBotId: unknown, rawTaskId: unknown) => {
+    assertTrustedAppRendererEvent(event);
+    const botId = readText(rawBotId, 'botId', 128, true);
+    const taskId = readText(rawTaskId, 'taskId', 256, true);
+    const owner = captureBotOperationOwner();
+    const db = getDbClient().drizzle;
+    const [[bot], [task], [link]] = await Promise.all([
+      db.select({ status: botProfiles.status }).from(botProfiles).where(eq(botProfiles.id, botId)).limit(1),
+      db.select({
+        status: sessions.status,
+        source: sessions.source,
+        remoteHostId: sessions.remoteHostId,
+        orcaRole: sessions.orcaRole,
+      }).from(sessions).where(eq(sessions.id, taskId)).limit(1),
+      db.select({ id: botSessionLinks.id }).from(botSessionLinks).where(eq(botSessionLinks.sessionId, taskId)).limit(1),
+    ]);
+    if (!canAssignTaskResponsibility({
+      botStatus: bot?.status,
+      botHomeHere: companionHomes.isHomeHere(botId),
+      botShadowed: isCompanionShadowed(botId),
+      task: task ? {
+        ...task,
+        botLinked: Boolean(link),
+      } : null,
+    })) {
+      throwIpcError('PRECONDITION_FAILED', '这位伙伴或这件任务当前不能建立负责关系');
+    }
+    await setTaskResponsibility(owner.userDataDir, botId, taskId, true, owner.assertCurrent);
+    owner.assertCurrent();
+    broadcastBotWorkbenchChanged(botId);
+    return { botId, taskId };
   });
   // 工作台详情视图:只读一件任务的最近内容(有界)。范围限于该伙伴已接手的项目,
   // 外部会话只读转录尾部,不写库、不导入。

@@ -586,6 +586,16 @@ const lastAssistantPersistIdBySession = new Map<string, string>();
  */
 const lastTopLevelAssistantPersistIdBySession = new Map<string, string>();
 const EMPTY_TOOL_USE_IDS: ReadonlySet<string> = new Set<string>();
+let assistantTurnCompletedListener:
+  | ((sessionId: string, clientId: string) => Promise<void> | void)
+  | null = null;
+
+/** Process-local projection hook; used by task-isolated teammate conversations. */
+export function setAssistantTurnCompletedListener(
+  listener: ((sessionId: string, clientId: string) => Promise<void> | void) | null,
+): void {
+  assistantTurnCompletedListener = listener;
+}
 
 /** 取出并清除本 turn 最后一条 assistant 的 persistId(没有则 undefined)。 */
 export function consumeLastAssistantPersistId(sessionId: string): string | undefined {
@@ -621,7 +631,17 @@ function markAssistantTurnBoundary(
       turnCompleted: completed,
     });
     if (!patched) return false;
-    return broadcastMessageAgentMetaUpdate(sessionId, clientId, ownerScope);
+    const published = await broadcastMessageAgentMetaUpdate(sessionId, clientId, ownerScope);
+    if (published && completed && assistantTurnCompletedListener) {
+      try {
+        await assistantTurnCompletedListener(sessionId, clientId);
+      } catch (error) {
+        log.warn('assistant turn completion listener failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return published;
   });
 }
 

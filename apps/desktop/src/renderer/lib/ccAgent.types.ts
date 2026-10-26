@@ -297,6 +297,8 @@ export interface CcMeta {
   /** Market opening: starter choices rendered as buttons below the message until the user speaks. */
   botStarterOptions?: string[];
   botDirectMessage?: import('../../shared/botDirectMessage').BotDirectMessageMeta;
+  /** Explicit message routed from an ordinary task to one teammate. */
+  botTaskExchange?: import('../../shared/botTaskExchange').BotTaskExchangeMeta;
 
   /**
    * Host-side marker for a Hermes-style Bot group room message. The text still

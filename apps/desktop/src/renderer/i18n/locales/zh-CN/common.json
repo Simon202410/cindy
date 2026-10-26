@@ -10482,6 +10482,14 @@
     }
   },
   "newChat": {
+    "botResponsibility": {
+      "label": "负责伙伴",
+      "choose": "选择负责伙伴",
+      "selected": "负责伙伴：{{name}}",
+      "none": "不指定伙伴",
+      "hint": "负责伙伴会跟进任务进展，但不会改变执行模型。",
+      "assignFailed": "任务已创建，但负责伙伴未能关联"
+    },
     "homeSuggestions": {
       "shuffle": "换一批",
       "dismiss": "不再显示",
@@ -11420,6 +11428,19 @@
     "verificationFailed": "暂时无法确认 ChatGPT 登录是否已恢复，请重新检测。"
   },
   "chat": {
+    "taskPartner": {
+      "railLabel": "选择接手的伙伴",
+      "active": "下一条消息发给 {{name}}",
+      "inactive": "{{name}} 当前静默，点击激活",
+      "sent": "发给 {{name}}",
+      "waiting": "已送到，等待伙伴回复",
+      "working": "{{name}} 正在思考…",
+      "failed": "没有送达伙伴",
+      "sendFailed": "消息没有送达伙伴，请重试",
+      "open": "打开 {{name}} 的对话",
+      "attachmentOnly": "请查看这些附件。",
+      "attachments": "{{count}} 个附件"
+    },
     "imageDelivery": {
       "stored": "图片已交付",
       "failed": "图片交付失败，可重试传输已有图片。",

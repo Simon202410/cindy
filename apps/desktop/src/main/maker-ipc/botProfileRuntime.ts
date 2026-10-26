@@ -1,4 +1,5 @@
 import { isChatOnlyGroupLane } from '../../shared/botGroupChat.js';
+import { TASK_PARTNER_ROUTE_PREFIX } from '../../shared/botTaskExchange.js';
 import { buildTeammateGuide as buildBotCapabilityContextPrompt } from './teammateGuide.js';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { buildBotMemoryScopeKey } from '@cindy/maker-core';
@@ -509,7 +510,8 @@ export async function hydrateBotProfileRuntime(
   if (!row || !['canonical', 'delegation', 'group', 'channel', 'thread'].includes(row.role)) return null;
   // A private-chat topic is the owner's own conversation, so it carries the main
   // Chat's owner-private abilities (cindy-bots-runtime.md「私聊话题」).
-  const ownerChat = row.role === 'canonical' || row.role === 'thread';
+  const taskPartnerLane = row.role === 'thread' && row.routeKey?.startsWith(TASK_PARTNER_ROUTE_PREFIX) === true;
+  const ownerChat = row.role === 'canonical' || (row.role === 'thread' && !taskPartnerLane);
   const [profile] = await db
     .select()
     .from(botProfiles)
@@ -528,10 +530,16 @@ export async function hydrateBotProfileRuntime(
     .limit(1);
   if (!version) return null;
   const chatOnly = row.role === 'group' && isChatOnlyGroupLane(row.routeKey);
-  const config = normalizeBotToolCapabilities(chatOnly ? {
+  const runtimeConfig = chatOnly ? {
     toolCapabilityVersion: 1, memory: false, userContextSource: '', skills: [], skillMode: 'allowlist',
     mcpServers: [], mcpMode: 'allowlist', toolsets: [], toolsetMode: 'allowlist',
-  } : parseObject(version.capabilitiesJson));
+  } : taskPartnerLane ? {
+      ...parseObject(version.capabilitiesJson),
+      // Temporary task collaboration starts without the Bot's personal memory.
+      memory: false,
+      userContextSource: '',
+    } : parseObject(version.capabilitiesJson);
+  const config = normalizeBotToolCapabilities(runtimeConfig);
   if (chatOnly) {
     opts.extraDirs = [];
     opts.writableDirs = [];

@@ -52,6 +52,9 @@ export interface WorkbenchTranscriptWire {
 export interface BotWorkbenchCallbacks {
   projects?: (params: { callerSessionId: string; projectId?: string; linked?: boolean; includeAvailable?: boolean }) => Promise<ControlResult<{ projects: Array<Record<string, unknown>> }, string>>;
   setResponsibility?: (params: { callerSessionId: string; taskId: string; responsible: boolean }) => Promise<ControlResult<{ taskId: string; responsible: boolean }, string>>;
+  replyToTask?: (params: { callerSessionId: string; bridgeId: string; message: string }) => Promise<
+    ControlResult<{ bridgeId: string; taskId: string; botId: string }, string>
+  >;
   todos?: (
     callerSessionId: string,
     operation: 'list' | 'update' | 'preflight' | 'ingest',
@@ -163,6 +166,29 @@ export function registerBotWorkbenchTools(
         if (!id) return missingSession();
         const result = await change({ callerSessionId: id, taskId: task_id, responsible });
         return result.ok ? okPayload({ task_id: result.taskId, responsible: result.responsible }) : errorPayload(result.errorCode, result.message);
+      },
+    });
+  }
+  if (deps.callbacks.replyToTask) {
+    const reply = deps.callbacks.replyToTask;
+    registry.register({
+      name: 'reply_to_task',
+      category: 'bots',
+      description:
+        'Reply into the ordinary task that temporarily sent you a message from its composer. '
+        + 'Use only the bridge_id included in that task message. The reply appears in that task as your message; '
+        + 'it does not change that task\'s model or start another task.',
+      inputShape: {
+        bridge_id: z.string().min(1).max(128),
+        message: z.string().min(1).max(WORKBENCH_MESSAGE_MAX_CHARS),
+      },
+      handler: async ({ bridge_id, message }) => {
+        const id = callerSessionId();
+        if (!id) return missingSession();
+        const result = await reply({ callerSessionId: id, bridgeId: bridge_id, message });
+        return result.ok
+          ? okPayload({ bridge_id: result.bridgeId, task_id: result.taskId, bot_id: result.botId })
+          : errorPayload(result.errorCode, result.message);
       },
     });
   }

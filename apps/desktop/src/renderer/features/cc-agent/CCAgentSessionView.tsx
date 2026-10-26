@@ -267,6 +267,7 @@ import { BotChatQuoteProvider, type BotChatQuoteValue } from '@/features/bots/bo
 import { BotChatQuoteComposerPreview } from '@/features/bots/BotChatQuoteViews';
 import { clearSentBotReplyQuote, getPendingBotReplyQuote, setPendingBotReplyQuote, usePendingBotReplyQuote } from '@/features/bots/botDmQuote';
 import { useBotReplyTargetPreference } from '@/features/bots/useBotReplyTargetPreference';
+import { TaskPartnerRail } from '@/features/bots/TaskPartnerRail';
 import { canFocusWithoutJumpLoad } from '@/lib/searchJumpTargeting';
 import { getMakerMemoryEnabled } from '@/lib/memorySettingsStore';
 import { useWorktreeCreation, worktreeCreationStore } from '@/lib/worktreeCreationStore';
@@ -1060,6 +1061,16 @@ function CCAgentSessionContent({
   const voiceQuestionBridge = useRef<VoiceQuestionTarget | null>(null);
   const closeVoiceMode = useCallback(() => setVoiceModeOpen(false), []);
   const botChatIdentity = resolveBotChatIdentity(botIdentity, sessionId);
+  const [activeTaskPartner, setActiveTaskPartner] = useState<{
+    sessionId: string;
+    botId: string | null;
+  } | null>(null);
+  const activeTaskPartnerId = activeTaskPartner && activeTaskPartner.sessionId === sessionId
+    ? activeTaskPartner.botId
+    : null;
+  const selectTaskPartner = useCallback((botId: string | null) => {
+    if (sessionId) setActiveTaskPartner({ sessionId, botId });
+  }, [sessionId]);
   const companionSettingsOpen = new URLSearchParams(location.search).get('settings') === '1';
   const openVoiceSettings = useCallback(() => {
     setVoiceModeOpen(false);
@@ -4323,6 +4334,60 @@ function CCAgentSessionContent({
     ],
   );
 
+  const taskPartnerAvailable = Boolean(
+    sessionId
+    && session
+    && !readOnly
+    && !botChatIdentity
+    && !remoteDeviceId
+    && !session.remoteHostId
+    && !session.orcaRole
+    && session.status === 'active'
+    && session.source !== 'review'
+    && !isSharedTaskPeer(remoteDeviceId ?? ''),
+  );
+  const handleComposerSend = useCallback<typeof handleSend>(async (
+    message,
+    model,
+    effort,
+    permissionMode,
+    files,
+    mentions,
+    opts,
+  ) => {
+    if (!taskPartnerAvailable || !sessionId || !activeTaskPartnerId) {
+      return handleSend(message, model, effort, permissionMode, files, mentions, opts);
+    }
+    const body = message.trim() || (files?.length ? t('chat.taskPartner.attachmentOnly') : '');
+    if (!body) return false;
+    try {
+      await window.electronAPI.maker.sendTaskPartnerMessage({
+        taskId: sessionId,
+        botId: activeTaskPartnerId,
+        message: body,
+        ...(files?.length ? {
+          files: files.map((file) => ({
+            id: file.id,
+            name: file.name,
+            ...(file.originalName ? { originalName: file.originalName } : {}),
+            path: file.path,
+            ...(file.url ? { url: file.url } : {}),
+            ext: file.ext,
+            size: file.size,
+            category: file.category,
+            mimeType: file.mimeType,
+            ...(file.annotated ? { annotated: true } : {}),
+          })),
+        } : {}),
+      });
+      return true;
+    } catch (error) {
+      log.warn('send task message to partner failed', error);
+      toast.error(t('chat.taskPartner.sendFailed'));
+      return false;
+    }
+  }, [activeTaskPartnerId, handleSend, sessionId, t, taskPartnerAvailable]);
+
   const voiceModeAvailable = Boolean(botChatIdentity && !botChatIdentity.deviceId && sessionId
     && !remoteDeviceId && !session?.remoteHostId && !readOnly && ownsRoute && viewVisible && !companionSettingsOpen);
   useEffect(() => { if (!voiceModeAvailable) setVoiceModeOpen(false); }, [voiceModeAvailable]);
@@ -5551,7 +5616,10 @@ function CCAgentSessionContent({
               展开态由「计划 + 完整被控提示」组成真实 flex 组合共同居中,被控提示会把计划
               向左挤且不会互相覆盖；折叠态计划恢复单独居中,呼吸灯移到 token 统计左侧。 */}
             <div
-              className="mx-auto grid grid-cols-1 grid-rows-1 items-center"
+              className={cn(
+                'mx-auto grid grid-cols-1 grid-rows-1 items-center',
+                taskPartnerAvailable && 'mb-[29px] -translate-y-[2px]',
+              )}
               style={{ width: inputWidth }}
             >
               {!pendingPlanReview || (hasControlledBanner && controlledBannerCollapsed) ? (
@@ -6023,6 +6091,13 @@ function CCAgentSessionContent({
                   aria-hidden={voiceModeOpen && voiceModeAvailable ? true : undefined}
                 >
                 <ChatInput
+                  floatingTopSlot={taskPartnerAvailable ? (
+                    <TaskPartnerRail
+                      activeBotId={activeTaskPartnerId}
+                      onSelect={selectTaskPartner}
+                      disabled={readOnly}
+                    />
+                  ) : undefined}
                   topSlot={cindyMakeRecoveryId && session ? (
                     <CindyMakeEditingActions
                       key={`${session.id}:${cindyMakeRecoveryId}`}
@@ -6033,7 +6108,7 @@ function CCAgentSessionContent({
                     <BotChatQuoteComposerPreview sessionId={sessionId} quote={pendingReplyQuote}
                       getMessage={getQuoteMessage} names={botQuoteNames} />
                   ) : remoteMakeCards.handlesSession ? <SessionResourceCards state={remoteMakeCards} /> : undefined}
-                  onSend={handleSend}
+                  onSend={handleComposerSend}
                   onComposerTyping={handleComposerTyping}
                   onBeforeVoiceInputStart={handleBeforeVoiceInputStart}
                   onStartVoiceConversation={voiceModeAvailable ? startVoiceMode : undefined}

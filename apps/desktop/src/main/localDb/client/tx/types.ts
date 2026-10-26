@@ -61,6 +61,7 @@ export type DbTxName =
   | 'bots.createGroupLane'
   | 'bots.createChannelLane'
   | 'bots.createThreadLane'
+  | 'bots.createTaskPartnerLane'
   | 'bots.archiveChannelLanes'
   | 'botGroups.create'
   | 'botGroups.setMembers'
@@ -1445,6 +1446,7 @@ export type DbTxArgsByName = {
   'bots.createGroupLane': BotGroupsCreateLaneArgs;
   'bots.createChannelLane': BotsCreateChannelLaneArgs;
   'bots.createThreadLane': BotsCreateThreadLaneArgs;
+  'bots.createTaskPartnerLane': BotsCreateChannelLaneArgs;
   'bots.archiveChannelLanes': BotsArchiveChannelLanesArgs;
   'botGroups.create': BotGroupsCreateArgs;
   'botGroups.setMembers': BotGroupsSetMembersArgs;
@@ -1545,6 +1547,7 @@ export type DbTxResultByName = {
   'bots.createGroupLane': BotGroupsCreateLaneResult;
   'bots.createChannelLane': BotGroupsCreateLaneResult;
   'bots.createThreadLane': BotGroupsCreateLaneResult;
+  'bots.createTaskPartnerLane': BotGroupsCreateLaneResult;
   'bots.archiveChannelLanes': { archivedSessionIds: string[] };
   'botGroups.create': undefined;
   'botGroups.setMembers': BotGroupsSetMembersResult;

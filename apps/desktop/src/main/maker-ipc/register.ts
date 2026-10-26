@@ -609,6 +609,12 @@ import {
 } from './botDirectMessageService.js';
 import { createBotGroupChatService, settleBotGroupLaneTerminal, type BotGroupChatService, type BotGroupChatServiceDeps, type BotGroupLaneTerminal } from './botGroupChatService.js';
 import { settleUndispatchedBotGroupTurn } from './botGroupRuntimeFailure.js';
+import {
+  createBotTaskExchangeService,
+  setBotTaskExchangeService,
+} from './botTaskExchangeService.js';
+import { setTaskResponsibility } from './botTaskResponsibility.js';
+import { broadcastBotWorkbenchChanged } from './botWorkbenchService.js';
 import { withChatServer } from './chatServer.js';
 import { companionHomes, isCompanionShadowed } from '../companion-cloud/homes.js';
 import { createCompanionCloudHost } from '../companion-cloud/host.js';
@@ -630,7 +636,7 @@ import { validateExistingLocalProjectDirectory } from '../mcp-integrations/creat
 import { gitExec } from '../worktree/gitExec.js';
 import { BOT_GROUP_CLIENT_ID_PREFIX } from '../../shared/botGroupChat.js';
 import { syncBotLanePermission, syncBotLinkedLanePermissions } from './botPermissionSync.js';
-import { ensureBotGroupLaneSession } from '../localDb/ipc/bots.js';
+import { ensureBotGroupLaneSession, ensureBotTaskPartnerLaneSession } from '../localDb/ipc/bots.js';
 import { restartBotRuntime } from './botRuntimeRestart.js';
 import { registerBotLifecycleHandlers } from './botLifecycleService.js';
 import { isSessionPermissionMode, persistPermissionModeWithoutRuntime } from './sessionPermissionPersistence.js';
@@ -770,6 +776,7 @@ import {
   redactToolInputForUntrustedBoundary,
   resetTurnPersistState,
   saveTurnStartedAtForDeferred,
+  setAssistantTurnCompletedListener,
   type DeferredTurnErrorRow,
 } from '../messagePersistBroadcaster.js';
 import { ensureCcManagerInstalledOrInstall } from '../remote-ssh/cc-manager-install.js';
@@ -13044,6 +13051,57 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
       assertOwner();
       await finishCompanionEnvironmentRemoval(ownerScopedUserDataPath(), botId, assertOwner);
     },
+  });
+  const botTaskExchangeService = createBotTaskExchangeService({
+    ensurePartnerSession: ensureBotTaskPartnerLaneSession,
+    takeResponsibility: async (botId, taskId) => {
+      const scope = activeOwnerScopeKey();
+      const root = ownerScopedUserDataPath();
+      const assertCurrent = () => {
+        if (isAppSessionBoundaryPending() || activeOwnerScopeKey() !== scope) {
+          throw new Error('OWNER_CHANGED');
+        }
+      };
+      await setTaskResponsibility(root, botId, taskId, true, assertCurrent);
+      assertCurrent();
+      broadcastBotWorkbenchChanged(botId);
+    },
+    dispatch: async (input) => {
+      const result = await dispatchBotSessionMessage({
+        targetSessionId: input.botSessionId,
+        clientId: `bot-task-exchange:${input.bridgeId}:request`,
+        message: input.message,
+        persistedContent: input.persistedContent,
+        ...(input.files?.length ? { files: input.files } : {}),
+        resumeWithStoredPermissionMode: true,
+      });
+      return result.ok ? { ok: true as const } : result;
+    },
+  });
+  setBotTaskExchangeService(botTaskExchangeService);
+  setAssistantTurnCompletedListener((sessionId, clientId) =>
+    botTaskExchangeService.mirrorTurnReply(sessionId, clientId));
+  ipcMain.handle('maker:task-partner:send', async (event, raw: unknown) => {
+    assertTrustedAppRendererEvent(event);
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      throwIpcError('INVALID_PARAMS', 'Invalid task partner message');
+    }
+    const input = raw as { taskId?: unknown; botId?: unknown; message?: unknown; files?: unknown };
+    try {
+      return await botTaskExchangeService.send({
+        taskId: input.taskId as string,
+        botId: input.botId as string,
+        message: input.message as string,
+        files: input.files,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      if (message === 'INVALID_ARGS') throwIpcError('INVALID_PARAMS', 'Invalid task partner message');
+      if (message === 'TASK_PARTNER_UNAVAILABLE') {
+        throwIpcError('PRECONDITION_FAILED', '这位伙伴或这件任务当前不能协作');
+      }
+      throwIpcError('INTERNAL', '消息没有送达伙伴，请重试');
+    }
   });
   const delegationForRestore = botDelegationServiceHolder;
   void restoreBotRuntimeForCurrentOwner();

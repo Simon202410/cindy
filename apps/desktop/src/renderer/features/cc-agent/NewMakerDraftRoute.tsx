@@ -41,6 +41,7 @@ import { isModelEnabled, useModelVisibilityVersion } from '@/state/modelVisibili
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { NEW_MAKER_DRAFT_KEY } from './newMakerDraftKeys';
 import { CreateWorkerPopover, type CreateWorkerForm } from './CreateWorkerPopover';
+import { BotResponsibilityPicker } from './BotResponsibilityPicker';
 import { createWorkerLabel } from './workerLabel';
 import { useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -971,6 +972,21 @@ export function NewMakerDraftRoute() {
   // 下面 isDeviceLinkDraft 与 create 分支的真值收窄对 undefined 同样成立)。
   const effectiveDeviceLinkDeviceId = draft.deviceLinkDeviceId ?? undefined;
   const effectiveDeviceLinkDeviceName = draft.deviceLinkDeviceName;
+  const createDraftSession = useCallback(
+    async (args: Parameters<typeof createSession>[0]) => {
+      const newSession = await createSession(args);
+      const botId = draft.responsibleBotId;
+      if (!newSession || !botId || args?.remoteHostId || effectiveDeviceLinkDeviceId) return newSession;
+      try {
+        await window.electronAPI.localDb.bots.workbench.assignTask(botId, newSession.id);
+      } catch (error) {
+        log.warn('[draft send] responsible teammate assignment failed', error);
+        toast.warning(t('newChat.botResponsibility.assignFailed'));
+      }
+      return newSession;
+    },
+    [createSession, draft.responsibleBotId, effectiveDeviceLinkDeviceId, t],
+  );
   /**
    * 远程控制下新建任务(建到被控电脑上)时,Agent 同样可以在第三台电脑运行(与手机新建任务、
    * 远程控制的已建任务同一套):被控电脑的供应商目录带「允许被远程调用」标记才提供(它认得
@@ -2570,7 +2586,7 @@ export function NewMakerDraftRoute() {
         model: sshModel, providerId: sshProviderId, effort: sshEffort, fastMode: sshFastMode,
       } = selection;
       try {
-        const newSession = await createSession({
+        const newSession = await createDraftSession({
           agentKind: draftVendor,
           workingDir: target.path,
           workspaceKind: 'project',
@@ -4254,7 +4270,7 @@ export function NewMakerDraftRoute() {
             if (!name) name = `auto-${Date.now().toString(36).slice(-6)}`;
 
             let branchName = getBranchName(name);
-            const newSession = await createSession({
+            const newSession = await createDraftSession({
               id: sessionId,
               agentKind: persistedAgentKind,
               model,
@@ -4525,7 +4541,7 @@ export function NewMakerDraftRoute() {
             return;
           }
 
-          const newSession = await createSession({
+          const newSession = await createDraftSession({
             id: sessionId,
             agentKind: persistedAgentKind,
             model,
@@ -5278,7 +5294,7 @@ export function NewMakerDraftRoute() {
           goalWorkingDir = baseRepo;
           setWtCreating(true);
         }
-        const newSession = await createSession({
+        const newSession = await createDraftSession({
           id: goalSessionId,
           agentKind: persistedAgentKind,
           model: draftInitialModel,
@@ -5857,6 +5873,13 @@ export function NewMakerDraftRoute() {
                     />
                   </button>
                 </FolderPickerPopover>
+                {!isRemoteProjectDraft && !isDeviceLinkDraft ? (
+                  <BotResponsibilityPicker
+                    value={draft.responsibleBotId}
+                    onChange={(responsibleBotId) => patchDraft({ responsibleBotId })}
+                    disabled={wtCreating || sendInFlight}
+                  />
+                ) : null}
                 <WorktreeChipsRow
                   variant="advancedOnly"
                   compact

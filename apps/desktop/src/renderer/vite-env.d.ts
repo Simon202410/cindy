@@ -4999,6 +4999,8 @@ interface ElectronAPI {
         >;
         /** 每个在用本机伙伴的逐任务责任 ID；旧宿主缺字段时不推断。`delegatedSessionIds` 只含伙伴自己开的后台任务。 */
         followScopes: () => Promise<Array<{ botId: string; sessionIds?: string[]; delegatedSessionIds?: string[] }>>;
+        /** 用户新建任务时指定的负责伙伴；任务发出后立即写入逐任务责任。 */
+        assignTask: (botId: string, taskId: string) => Promise<{ botId: string; taskId: string }>;
       };
       /** 伙伴自主跟进：工作台「一眼」投影与账号级「自动跟进所有任务」设置（shared/botAutonomy.ts）。 */
       autonomy: {
@@ -5596,6 +5598,23 @@ interface ElectronAPI {
     onBotWorkbenchChanged: (cb: (payload: { botId: string }) => void) => () => void;
     /** 状态表或「自动跟进所有任务」设置变化（节流 ≤ 1 次/秒）；缺 botIds = 全部伙伴。 */
     onBotAutonomyChanged: (cb: (payload: { botIds?: string[] }) => void) => () => void;
+    sendTaskPartnerMessage: (input: {
+      taskId: string;
+      botId: string;
+      message: string;
+      files?: Array<{
+        id: string;
+        name: string;
+        originalName?: string;
+        path: string;
+        url?: string;
+        ext: string;
+        size: number;
+        category: 'image' | 'pdf' | 'text' | 'office' | 'file';
+        mimeType: string;
+        annotated?: boolean;
+      }>;
+    }) => Promise<{ bridgeId: string; botId: string; taskId: string }>;
     runBotLifecycleAction: (
       request: import('../shared/botLifecycle').BotLifecycleActionRequest,
     ) => Promise<import('../shared/botLifecycle').BotLifecycleActionResult>;

@@ -108,6 +108,8 @@ export interface NewMakerDraft {
   vendor: MakerVendor;
   /** 选中的 workingDir;初次 null,Project 行内 + 会预填到此。 */
   workingDir: string | null;
+  /** Optional teammate responsible for following the task created from this draft. */
+  responsibleBotId: string | null;
   /** 远程项目所属 host。null = 本地项目或对话。 */
   remoteHostId: string | null;
   /**
@@ -241,6 +243,7 @@ function makeDefault(): NewMakerDraft {
   return {
     vendor: 'cc',
     workingDir: null,
+    responsibleBotId: null,
     remoteHostId: null,
     deviceLinkDeviceId: null,
     deviceLinkDeviceName: null,
@@ -295,6 +298,12 @@ function sanitize(raw: unknown): NewMakerDraft {
   // 迁到 'cc'(它已被 ChatInput 底部的协同 toggle 取代),避免空白入口。
   const vendor: MakerVendor = isSelectableVendor(r.vendor) ? r.vendor : def.vendor;
   const workingDir = normalizeDraftWorkingDir(r.workingDir);
+  const responsibleBotId =
+    typeof r.responsibleBotId === 'string'
+    && r.responsibleBotId.trim().length > 0
+    && r.responsibleBotId.length <= 128
+      ? r.responsibleBotId.trim()
+      : null;
   const remoteHostId =
     typeof r.remoteHostId === 'string' && r.remoteHostId.trim().length > 0
       ? r.remoteHostId.trim()
@@ -467,6 +476,7 @@ function sanitize(raw: unknown): NewMakerDraft {
   return {
     vendor,
     workingDir,
+    responsibleBotId,
     remoteHostId: workingDir == null ? null : remoteHostId,
     // device-link 目标**不跨重启恢复**:绑定的是活动设备,重启后可能已离线 → 一律置 null。
     deviceLinkDeviceId: null,
@@ -925,6 +935,7 @@ export function patchDraft(patch: Partial<NewMakerDraft>): void {
 export function resetDraftWorkspaceTargets(): void {
   patchDraft({
     workingDir: null,
+    responsibleBotId: null,
     extraDirs: [],
     writableDirs: [],
     collab: { ...currentDraft.collab, enabled: false },

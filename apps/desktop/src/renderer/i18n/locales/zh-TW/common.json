@@ -10482,6 +10482,14 @@
     }
   },
   "newChat": {
+    "botResponsibility": {
+      "label": "負責夥伴",
+      "choose": "選擇負責夥伴",
+      "selected": "負責夥伴：{{name}}",
+      "none": "不指定夥伴",
+      "hint": "負責夥伴會追蹤任務進展，但不會改變執行模型。",
+      "assignFailed": "任務已建立，但負責夥伴未能關聯"
+    },
     "homeSuggestions": {
       "shuffle": "換一批",
       "dismiss": "不再顯示",
@@ -11420,6 +11428,19 @@
     "verificationFailed": "暫時無法確認 ChatGPT 登入是否已恢復，請重新檢測。"
   },
   "chat": {
+    "taskPartner": {
+      "railLabel": "選擇接手的夥伴",
+      "active": "下一則訊息發給 {{name}}",
+      "inactive": "{{name}} 目前靜默，點擊啟用",
+      "sent": "發給 {{name}}",
+      "waiting": "已送達，等待夥伴回覆",
+      "working": "{{name}} 正在思考…",
+      "failed": "沒有送達夥伴",
+      "sendFailed": "訊息沒有送達夥伴，請重試",
+      "open": "開啟 {{name}} 的對話",
+      "attachmentOnly": "請查看這些附件。",
+      "attachments": "{{count}} 個附件"
+    },
     "imageDelivery": {
       "stored": "圖片已交付",
       "failed": "圖片交付失敗，可重試傳輸已有圖片。",

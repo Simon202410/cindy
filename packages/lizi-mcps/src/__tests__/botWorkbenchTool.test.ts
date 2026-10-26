@@ -62,6 +62,12 @@ function setup(sessionId: string | null = 'bot-session', todos?:BotWorkbenchCall
   const callbacks: BotWorkbenchCallbacks = {
     ...(todos ? {todos} : {}),
     setResponsibility: vi.fn(async ({ taskId, responsible }) => ({ ok: true as const, taskId, responsible })),
+    replyToTask: vi.fn(async ({ bridgeId }) => ({
+      ok: true as const,
+      bridgeId,
+      taskId: 'task-1',
+      botId: 'bot-session',
+    })),
     get: vi.fn(async () => ({ ok: true as const, workbench: glance })),
     read: vi.fn(async ({ taskId }: { taskId: string }) => ({
       ok: true as const,
@@ -84,6 +90,29 @@ function setup(sessionId: string | null = 'bot-session', todos?:BotWorkbenchCall
 }
 
 describe('bot workbench tools', () => {
+  it('replies into a task only through the bridge id supplied by its host envelope', async () => {
+    const { reg, callbacks } = setup();
+    expect(parse(await reg.call('reply_to_task', {
+      bridge_id: 'bridge-1',
+      message: '我把按钮层级重排好了',
+      task_id: 'forged',
+    })).ok).toBe(false);
+    expect(parse(await reg.call('reply_to_task', {
+      bridge_id: 'bridge-1',
+      message: '我把按钮层级重排好了',
+    }))).toEqual({
+      ok: true,
+      bridge_id: 'bridge-1',
+      task_id: 'task-1',
+      bot_id: 'bot-session',
+    });
+    expect(callbacks.replyToTask).toHaveBeenCalledWith({
+      callerSessionId: 'bot-session',
+      bridgeId: 'bridge-1',
+      message: '我把按钮层级重排好了',
+    });
+  });
+
   it('shows the glance to the model with task ids ready for get_task_digest', async () => {
     const { reg, callbacks } = setup();
     expect(parse(await reg.call('get_workbench', {}))).toEqual({

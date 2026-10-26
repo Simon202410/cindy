@@ -867,6 +867,8 @@ interface ChatInputProps {
    * with a hairline divider.
    */
   topSlot?: React.ReactNode;
+  /** Decorative/action layer attached to the top edge without taking composer layout space. */
+  floatingTopSlot?: React.ReactNode;
   /**
    * 协同模式入口 (Claude / Codex Lead session 中途 toggle Worker)。
    * 提供时:与目标模式、计划模式同级渲染在 composer「+」菜单;
@@ -1309,6 +1311,7 @@ export function ChatInput({
   middleToolbarSlot,
   compactMiddleToolbarSlot,
   topSlot,
+  floatingTopSlot,
   collaboration,
   botMentions = [],
   onUnifiedDraftSelect,
@@ -9051,6 +9054,11 @@ export function ChatInput({
           as the outside-click boundary for collapsing the expanded queue tail
           (see paletteAnchorRef) — palette clicks are "inside". */}
       <div ref={paletteAnchorRef} className="relative w-full">
+        {floatingTopSlot ? (
+          <div className="pointer-events-none absolute bottom-full left-0 right-0 z-20 mb-[5px] flex justify-start px-3">
+            <div className="pointer-events-auto">{floatingTopSlot}</div>
+          </div>
+        ) : null}
         <div
           ref={mergedCardRef}
           className={cn(

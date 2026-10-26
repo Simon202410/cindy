@@ -10517,6 +10517,14 @@
     }
   },
   "newChat": {
+    "botResponsibility": {
+      "label": "Responsible teammate",
+      "choose": "Choose a responsible teammate",
+      "selected": "Responsible teammate: {{name}}",
+      "none": "No teammate",
+      "hint": "The responsible teammate follows up on this task without changing its execution model.",
+      "assignFailed": "Task created, but the responsible teammate could not be linked"
+    },
     "homeSuggestions": {
       "shuffle": "Show more",
       "dismiss": "Don't show again",
@@ -11455,6 +11463,19 @@
     "verificationFailed": "Cindy couldn’t confirm whether the ChatGPT sign-in has recovered. Check again."
   },
   "chat": {
+    "taskPartner": {
+      "railLabel": "Choose a teammate to receive messages",
+      "active": "Next message goes to {{name}}",
+      "inactive": "{{name}} is quiet; click to activate",
+      "sent": "Sent to {{name}}",
+      "waiting": "Delivered; waiting for the teammate to reply",
+      "working": "{{name}} is thinking…",
+      "failed": "Not delivered to the teammate",
+      "sendFailed": "The message was not delivered to the teammate. Try again.",
+      "open": "Open {{name}}'s conversation",
+      "attachmentOnly": "Please review these attachments.",
+      "attachments": "{{count}} attachment(s)"
+    },
     "imageDelivery": {
       "stored": "Image delivered",
       "failed": "Image delivery failed. Retry transferring the existing image.",

@@ -10482,6 +10482,14 @@
     }
   },
   "newChat": {
+    "botResponsibility": {
+      "label": "担当パートナー",
+      "choose": "担当パートナーを選択",
+      "selected": "担当パートナー：{{name}}",
+      "none": "担当なし",
+      "hint": "担当パートナーはタスクの進捗を確認します。実行モデルは変更されません。",
+      "assignFailed": "タスクは作成されましたが、担当パートナーを紐付けられませんでした"
+    },
     "homeSuggestions": {
       "shuffle": "別の提案",
       "dismiss": "今後表示しない",
@@ -11420,6 +11428,19 @@
     "verificationFailed": "ChatGPT ログインが復旧したか確認できませんでした。再確認してください。"
   },
   "chat": {
+    "taskPartner": {
+      "railLabel": "メッセージを受け取るパートナーを選択",
+      "active": "次のメッセージは {{name}} に送信されます",
+      "inactive": "{{name}} は待機中です。クリックで有効化",
+      "sent": "{{name}} に送信",
+      "waiting": "送信済み。パートナーの返信を待っています",
+      "working": "{{name}} が考えています…",
+      "failed": "パートナーに送信できませんでした",
+      "sendFailed": "パートナーにメッセージを送信できませんでした。再試行してください",
+      "open": "{{name}} の会話を開く",
+      "attachmentOnly": "添付ファイルを確認してください。",
+      "attachments": "添付ファイル {{count}} 件"
+    },
     "imageDelivery": {
       "stored": "画像を受け取りました",
       "failed": "画像の転送に失敗しました。既存の画像の転送を再試行できます。",

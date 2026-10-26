@@ -185,6 +185,8 @@ function dispatchTransaction(db: Database.Database, args: unknown): unknown {
       return botsCreateChannelLane(db, txArgs as BotsCreateChannelLaneArgs);
     case 'bots.createThreadLane':
       return botsCreateThreadLane(db, txArgs as BotsCreateThreadLaneArgs);
+    case 'bots.createTaskPartnerLane':
+      return botsCreateTaskPartnerLane(db, txArgs as BotsCreateChannelLaneArgs);
     case 'bots.archiveChannelLanes':
       return botsArchiveChannelLanes(db, txArgs as BotsArchiveChannelLanesArgs);
     case 'botGroups.create':
@@ -917,6 +919,43 @@ function botsCreateThreadLane(db: Database.Database, args: BotsCreateThreadLaneA
         AND s.source = 'bot' AND s.status = 'active'
       LIMIT 1`).get(rootSessionId, rootClientId, botId);
     if (!root) throw Object.assign(new Error('原消息已不在私聊里'), { code: 'ROOT_UNAVAILABLE' });
+    const existing = db.prepare(`SELECT l.session_id AS sessionId FROM bot_session_links l
+      INNER JOIN sessions s ON s.id = l.session_id
+      WHERE l.bot_id = ? AND l.role = 'thread' AND l.route_key = ? AND l.archived_at IS NULL
+        AND s.source = 'bot' AND s.status = 'active'
+      LIMIT 1`).get(botId, routeKey) as { sessionId: string } | undefined;
+    if (existing) return { sessionId: existing.sessionId, created: false };
+    insertBotSession(db, s);
+    db.prepare(`INSERT INTO bot_session_links
+      (id, bot_id, session_id, profile_version, role, route_key, created_at, archived_at)
+      VALUES (?, ?, ?, ?, 'thread', ?, ?, NULL)`)
+      .run(`${botId}:${sessionId}`, botId, sessionId, profile.version, routeKey, createdAt);
+    const permission = botsReconcileLanePermission(db, { sessionId });
+    return { sessionId, created: true,
+      ...(permission.canonicalSessionId ? { permissionRepairCanonicalSessionId: permission.canonicalSessionId } : {}) };
+  })();
+}
+
+/**
+ * One hidden task-isolation lane per (ordinary task, Bot). It uses the private-chat
+ * lane runtime so the Bot keeps its Profile and tools, but a non-DM route key
+ * deliberately prevents any private-chat history note from being loaded.
+ */
+function botsCreateTaskPartnerLane(db: Database.Database, args: BotsCreateChannelLaneArgs): BotGroupsCreateLaneResult {
+  const p = asRecord(args, 'bots.createTaskPartnerLane args');
+  const botId = expectString(p.botId, 'botId');
+  const routeKey = expectString(p.routeKey, 'routeKey');
+  if (!routeKey.startsWith('task-partner:')) throw new Error('Task partner lane route key is invalid');
+  const s = asRecord(p.session, 'session');
+  const sessionId = expectString(s.id, 'session.id');
+  const createdAt = expectNumber(s.createdAt, 'session.createdAt');
+  if (expectString(s.source, 'session.source') !== 'bot') throw new Error('Task partner lane must be a Bot session');
+  return db.transaction(() => {
+    const profile = db.prepare('SELECT status, current_version AS version FROM bot_profiles WHERE id = ?')
+      .get(botId) as { status: string; version: number } | undefined;
+    if (!profile || profile.status !== 'active') {
+      throw Object.assign(new Error('伙伴当前不可用'), { code: 'BOT_UNAVAILABLE' });
+    }
     const existing = db.prepare(`SELECT l.session_id AS sessionId FROM bot_session_links l
       INNER JOIN sessions s ON s.id = l.session_id
       WHERE l.bot_id = ? AND l.role = 'thread' AND l.route_key = ? AND l.archived_at IS NULL

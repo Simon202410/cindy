@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { withCrossProcessLock } from '../device-link/crossProcessLock.js';
 import { botProfileDir } from './botProfileFolder.js';
 import { signalBotAutonomyBotsChanged } from '../bot-autonomy/botsChangedSignal.js';
+import { isFollowableTaskSource } from './botWorkbenchAccess.js';
 
 /** Per-task responsibility, independent of directories and Todo.
  * Releases override creation evidence; nothing is inferred from conversation text.
@@ -11,6 +12,34 @@ import { signalBotAutonomyBotsChanged } from '../bot-autonomy/botsChangedSignal.
 export type TaskResponsibilities = Record<string, { responsible: boolean; updatedAt: string }>;
 const MAX_RECORDS = 10_000;
 const MAX_BYTES = 4 * 1024 * 1024;
+
+export interface TaskResponsibilityAssignmentFacts {
+  botStatus: string | null | undefined;
+  botHomeHere: boolean;
+  botShadowed: boolean;
+  task: {
+    status: string;
+    source: string | null;
+    remoteHostId?: string | null;
+    orcaRole: string | null;
+    botLinked: boolean;
+  } | null;
+}
+
+/** New-task assignment uses the same scope as the autonomous follower. */
+export function canAssignTaskResponsibility(facts: TaskResponsibilityAssignmentFacts): boolean {
+  const task = facts.task;
+  return facts.botStatus === 'active'
+    && facts.botHomeHere
+    && !facts.botShadowed
+    && !!task
+    && task.status === 'active'
+    && task.source !== 'shared'
+    && !task.remoteHostId
+    && task.orcaRole !== 'worker'
+    && !task.botLinked
+    && isFollowableTaskSource(task.source);
+}
 
 function filePath(root: string, botId: string): string {
   return path.join(botProfileDir(root, botId), 'task-responsibility.v1.json');

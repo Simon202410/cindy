@@ -116,6 +116,7 @@ import { hasUserVisibleText } from '../../shared/visibleText';
 import { readReviewRunMeta } from '../../shared/reviewRun';
 import { readBotCollaborationMeta } from '../../shared/botCollaboration';
 import { readBotDirectMessageMeta } from '../../shared/botDirectMessage';
+import { readBotTaskExchangeMeta } from '../../shared/botTaskExchange';
 import {
   deriveAutoTitleSeed,
   reconcileSessionRefsForText,
@@ -621,6 +622,7 @@ export interface ChatMessage {
      * 它不进入左栏，也不与后台任务卡混用。
      */
     | 'bot-direct-message'
+    | 'bot-task-exchange'
     | 'bot-authorization'
     /** 代输入结束留痕:由隐藏续接行派生,只有步数、设备与域名,没有任何输入值。 */
     | 'input-handoff'
@@ -19474,6 +19476,17 @@ function mapServerMessages(serverMsgs: Message[]): ChatMessage[] {
         isStreaming: false,
         systemCardType: 'bot-direct-message' as const,
         systemCardData: { ...directMessage },
+      };
+    }
+    const taskExchange = readBotTaskExchangeMeta(m.agentMeta?.botTaskExchange);
+    if (m.role === 'assistant' && taskExchange) {
+      return {
+        clientId: m.clientId,
+        role: m.role,
+        content: '',
+        isStreaming: false,
+        systemCardType: 'bot-task-exchange' as const,
+        systemCardData: { ...taskExchange },
       };
     }
     // image-local-cache: user role messages may have JSON-shaped content

@@ -66,6 +66,7 @@ import {
   getTaskActionSession,
   confirmTaskAction,
 } from '../maker-ipc/register.js';
+import { tryGetBotTaskExchangeService } from '../maker-ipc/botTaskExchangeService.js';
 import { createBotProfile } from '../localDb/ipc/bots.js';
 import { submitGithubIssueForSession } from '../github-issue/index.js';
 import {
@@ -1141,6 +1142,22 @@ export function createDesktopMcpProviders(deps: DesktopMcpProvidersDeps): LiziMc
           } catch(error) { return {ok:false,errorCode:error instanceof TodoError ? error.code : 'INTERNAL',message:error instanceof Error?error.message:'INTERNAL'}; }
         },
         setResponsibility: (params) => runBotWorkbenchTool(workbenchHost, (access) => access.setResponsibility(params)),
+        replyToTask: async ({ callerSessionId, bridgeId, message }) => {
+          const service = tryGetBotTaskExchangeService();
+          if (!service) {
+            return { ok: false as const, errorCode: 'HOST_NOT_READY', message: 'Task collaboration is not ready' };
+          }
+          try {
+            const result = await service.reply({ callerSessionId, bridgeId, message });
+            return { ok: true as const, ...result };
+          } catch (error) {
+            return {
+              ok: false as const,
+              errorCode: 'TASK_EXCHANGE_NOT_FOUND',
+              message: error instanceof Error ? error.message : String(error),
+            };
+          }
+        },
         get: (params) => runBotWorkbenchTool(workbenchHost, (access) => access.get(params)),
         read: (params) => runBotWorkbenchTool(workbenchHost, (access) => access.read(params)),
         continueTask: (params) => runBotWorkbenchTool(workbenchHost, (access) => access.continueTask(params)),

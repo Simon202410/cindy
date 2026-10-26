@@ -5801,6 +5801,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
           ipcRenderer.invoke('local-db:bots:workbench:read-task', botId, taskId),
         followScopes: (): Promise<unknown> =>
           ipcRenderer.invoke('local-db:bots:workbench:follow-scopes'),
+        assignTask: (botId: string, taskId: string): Promise<unknown> =>
+          ipcRenderer.invoke('local-db:bots:workbench:assign-task', botId, taskId),
       },
       /** 伙伴自主跟进：工作台「一眼」与「自动跟进所有任务」设置（shared/botAutonomy.ts）。 */
       autonomy: {
@@ -6329,6 +6331,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onBotProfileChanged: fanOutBotProfileChanged,
     onBotWorkbenchChanged: fanOutBotWorkbenchChanged,
     onBotAutonomyChanged: fanOutBotAutonomyChanged,
+    sendTaskPartnerMessage: (input: {
+      taskId: string;
+      botId: string;
+      message: string;
+      files?: Array<{
+        id: string;
+        name: string;
+        originalName?: string;
+        path: string;
+        url?: string;
+        ext: string;
+        size: number;
+        category: 'image' | 'pdf' | 'text' | 'office' | 'file';
+        mimeType: string;
+        annotated?: boolean;
+      }>;
+    }): Promise<{ bridgeId: string; botId: string; taskId: string }> =>
+      ipcRenderer.invoke('maker:task-partner:send', input),
     runBotLifecycleAction: (
       request: import('../shared/botLifecycle').BotLifecycleActionRequest,
     ): Promise<import('../shared/botLifecycle').BotLifecycleActionResult> =>
