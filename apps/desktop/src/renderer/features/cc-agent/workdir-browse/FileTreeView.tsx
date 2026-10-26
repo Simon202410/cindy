@@ -806,6 +806,8 @@ const FileTreeRow = memo(function FileTreeRow({
   const gitKind = gitChange?.kind ?? gitDirectoryChange?.kind;
   const gitVisual = gitKind ? WORKDIR_GIT_STATUS_VISUAL[gitKind] : null;
   const gitLabel = gitKind ? t(`ccAgent.workdirBrowse.gitStatus.${gitKind}`) : undefined;
+  // Selection owns the foreground; status remains on the trailing marker.
+  const fileStatusColor = gitVisual && !isFolder && !selected ? gitVisual.color : undefined;
 
   // Indent: 16 px per depth + 8 px base padding.
   const paddingLeft = depth * 16 + 8;
@@ -883,6 +885,7 @@ const FileTreeRow = memo(function FileTreeRow({
         <Icon
           size={14}
           strokeWidth={1.75}
+          style={fileStatusColor ? { color: fileStatusColor } : undefined}
           className={cn(
             'shrink-0',
             selected
@@ -890,7 +893,12 @@ const FileTreeRow = memo(function FileTreeRow({
               : 'text-[var(--cmd-palette-item-meta)]',
           )}
         />
-        <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+        <span
+          className="min-w-0 flex-1 truncate"
+          style={fileStatusColor ? { color: fileStatusColor } : undefined}
+        >
+          {entry.name}
+        </span>
         {gitVisual && !isFolder ? (
           <span
             aria-label={gitLabel}

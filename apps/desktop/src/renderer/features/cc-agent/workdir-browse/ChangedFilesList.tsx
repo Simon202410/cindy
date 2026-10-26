@@ -243,6 +243,7 @@ export function ChangedFilesList({
           const directory = slash < 0 ? '' : path.slice(0, slash);
           const Icon = pickFileIcon(name);
           const visual = WORKDIR_GIT_STATUS_VISUAL[change.kind];
+          const statusColor = selectedPath === path ? undefined : visual.color;
           const rowKey = `file:${path}`;
           return (
             <div
@@ -261,8 +262,18 @@ export function ChangedFilesList({
                 selectedPath === path && 'bg-[var(--sidebar-item-active)]',
               )}
             >
-              <Icon size={14} strokeWidth={1.75} className="shrink-0 text-[var(--text-secondary)]" />
-              <span className="min-w-0 truncate">{name}</span>
+              <Icon
+                size={14}
+                strokeWidth={1.75}
+                className="shrink-0 text-[var(--text-secondary)]"
+                style={statusColor ? { color: statusColor } : undefined}
+              />
+              <span
+                className="min-w-0 truncate"
+                style={statusColor ? { color: statusColor } : undefined}
+              >
+                {name}
+              </span>
               {directory && (
                 <span className="min-w-0 truncate text-10 text-[var(--text-tertiary)]">
                   {directory}
