@@ -77,6 +77,19 @@ describe('MarkdownRenderer rich local media', () => {
     const view = render(<MarkdownRenderer workingDir="/workspace" content={richMedia('audio', '/music/a.mp3')} renderRichAnswers allowPrivilegedLinks={false} />);
     expect(view.container.querySelector('audio')).toBeNull();
   });
+
+  it('shows managed reply images without enabling privileged links', () => {
+    const src = `cindy-media://blobs/${'a'.repeat(64)}.png`;
+    const view = render(
+      <MarkdownRenderer
+        workingDir="/workspace"
+        content={`![design screenshot](${src})`}
+        allowPrivilegedLinks={false}
+        allowManagedMedia
+      />,
+    );
+    expect(view.container.querySelector('img')?.getAttribute('src')).toBe(src);
+  });
 });
 
 describe('MarkdownRenderer managed video targets', () => {

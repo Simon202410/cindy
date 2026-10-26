@@ -122,7 +122,11 @@ import { useImageClipboard } from './useImageClipboard';
 import { ImageHoverPreview } from './ImageHoverPreview';
 import { ImageMissingPlaceholder } from './ImageMissingPlaceholder';
 import { ChatVideoView } from './ChatVideoView';
-import { isManagedMarkdownVideoUrl, markdownMediaFilename } from './markdownMedia';
+import {
+  isManagedMarkdownMediaUrl,
+  isManagedMarkdownVideoUrl,
+  markdownMediaFilename,
+} from './markdownMedia';
 import { MarkdownDiffBlock } from './MarkdownDiffBlock';
 import { MarkdownMermaidBlock } from './MarkdownMermaidBlock';
 import { TextLightbox } from './TextLightbox';
@@ -336,6 +340,11 @@ const previewSafeUrlTransform: UrlTransform = (url, key) => {
   return defaultUrlTransform(url);
 };
 
+const managedMediaSafeUrlTransform: UrlTransform = (url, key, node) => {
+  if (key === 'src' && isManagedMarkdownMediaUrl(url)) return url;
+  return previewSafeUrlTransform(url, key, node);
+};
+
 interface MarkdownRendererProps {
   renderRichAnswers?: boolean;
   /** F1: session cwd used to resolve relative paths in markdown links.
@@ -361,6 +370,8 @@ interface MarkdownRendererProps {
   currentSessionTitle?: string | null;
   /** 受信任内容可解析本地路径和 xdt-* 内部协议；外部 Market 内容必须关闭。 */
   allowPrivilegedLinks?: boolean;
+  /** 外部内容仍可展示 Cindy 媒体仓里的图片，不开放本地路径或深链。 */
+  allowManagedMedia?: boolean;
   /**
    * doc 模式专用 opt-in: 在每个 block 元素根上写入 `data-source-line="<N>"`,
    * N = 该节点在源码里的 1-based 起始行号 (取自 mdast `node.position.start.line`)。
@@ -1722,6 +1733,7 @@ const MarkdownRendererBase = memo(function MarkdownRendererBase({
   currentSessionId,
   currentSessionTitle,
   allowPrivilegedLinks = true,
+  allowManagedMedia = false,
   emitSourceLines = false,
 }: MarkdownRendererProps) {
   // Cap markdown re-parse + syntax highlight cost during streaming.
@@ -1811,10 +1823,11 @@ const MarkdownRendererBase = memo(function MarkdownRendererBase({
       ...(emitSourceLines ? makeSourceLineWrappers() : {}),
       img: ({ src, alt, node, ...props }) => {
         const rawLocalSrc = node?.properties?.[RAW_LOCAL_IMAGE_SRC_PROP];
+        const rawSrc = typeof rawLocalSrc === 'string' ? rawLocalSrc : src;
         const normalized = normalizeMarkdownImageSrc(
-          typeof rawLocalSrc === 'string' ? rawLocalSrc : src,
+          rawSrc,
           workingDir,
-          allowPrivilegedLinks,
+          allowPrivilegedLinks || (allowManagedMedia && isManagedMarkdownMediaUrl(rawSrc)),
         );
         if (isManagedMarkdownVideoUrl(normalized)) {
           // 远程会话里视频 URL 同样指向远端机器，先按来源改写到 cindy-remote-media://
@@ -1971,9 +1984,15 @@ const MarkdownRendererBase = memo(function MarkdownRendererBase({
       currentSessionId,
       currentSessionTitle,
       allowPrivilegedLinks,
+      allowManagedMedia,
       remoteMediaOrigin,
     ],
   );
+  const urlTransform = allowPrivilegedLinks
+    ? trustedUrlTransform
+    : allowManagedMedia
+      ? managedMediaSafeUrlTransform
+      : previewSafeUrlTransform;
 
   return (
     <div className="msg-markdown select-text">
@@ -1988,9 +2007,7 @@ const MarkdownRendererBase = memo(function MarkdownRendererBase({
             }
             rehypePlugins={REHYPE_PLUGINS}
             components={components}
-            urlTransform={
-              allowPrivilegedLinks ? trustedUrlTransform : previewSafeUrlTransform
-            }
+            urlTransform={urlTransform}
             wordFadeState={wordFadeState}
             emitSourceLines={emitSourceLines}
             wholeDocument={streamingChunks.length === 1}
@@ -2001,7 +2018,7 @@ const MarkdownRendererBase = memo(function MarkdownRendererBase({
           remarkPlugins={allowPrivilegedLinks ? REMARK_PLUGINS_PRIVILEGED : REMARK_PLUGINS}
           rehypePlugins={REHYPE_PLUGINS}
           components={components}
-          urlTransform={allowPrivilegedLinks ? trustedUrlTransform : previewSafeUrlTransform}
+          urlTransform={urlTransform}
           skipHtml
         >
           {renderedContent}
@@ -2042,7 +2059,14 @@ export const MarkdownRenderer = memo(function MarkdownRenderer(props: MarkdownRe
     const raw = richMediaSource(node);
     if (!raw) return null;
     if (node.kind === 'video' && youtubeVideo(raw)) return <VideoSitePreview src={raw} title={richString(node, 'alt', 'YouTube')} />;
-    const normalized = raw.startsWith('xdt-audio://') && props.allowPrivilegedLinks !== false ? raw : normalizeMarkdownImageSrc(raw, props.workingDir, props.allowPrivilegedLinks !== false);
+    const normalized = raw.startsWith('xdt-audio://') && props.allowPrivilegedLinks !== false
+      ? raw
+      : normalizeMarkdownImageSrc(
+        raw,
+        props.workingDir,
+        props.allowPrivilegedLinks !== false ||
+          Boolean(props.allowManagedMedia && isManagedMarkdownMediaUrl(raw)),
+      );
     if (!normalized) return null;
     // Local audio has its own extension-checked protocol; xdt-file serves
     // images/documents/video and rejects MP3. Preserve the encoded path and

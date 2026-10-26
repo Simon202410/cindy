@@ -103,7 +103,12 @@ function BotTaskExchangeCardBody({
         {sent ? (
           <p className="whitespace-pre-wrap break-words">{meta.text}</p>
         ) : (
-          <MarkdownRenderer workingDir={workingDir} content={meta.text} allowPrivilegedLinks={false} />
+          <MarkdownRenderer
+            workingDir={workingDir}
+            content={meta.text}
+            allowPrivilegedLinks={false}
+            allowManagedMedia
+          />
         )}
         {meta.attachmentCount ? (
           <p className="mt-2 text-11 text-[var(--text-tertiary)]">
