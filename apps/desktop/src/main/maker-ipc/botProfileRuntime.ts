@@ -509,11 +509,12 @@ export async function hydrateBotProfileRuntime(
   // Group lanes, IM channel lanes and private-chat topics are long-lived like the
   // canonical Chat and share its Profile/Home. Channel lanes and topics are
   // full-profile lanes (not chat-only).
-  if (!row || !['canonical', 'delegation', 'group', 'channel', 'thread'].includes(row.role)) return null;
+  if (!row || !['canonical', 'delegation', 'group', 'channel', 'thread', 'routine'].includes(row.role)) return null;
   // A private-chat topic is the owner's own conversation, so it carries the main
   // Chat's owner-private abilities (cindy-bots-runtime.md「私聊话题」).
   const taskPartnerLane = row.role === 'thread' && row.routeKey?.startsWith(TASK_PARTNER_ROUTE_PREFIX) === true;
-  const ownerChat = row.role === 'canonical' || (row.role === 'thread' && !taskPartnerLane);
+  const ownerChat = row.role === 'canonical' || row.role === 'routine'
+    || (row.role === 'thread' && !taskPartnerLane);
   const [profile] = await db
     .select()
     .from(botProfiles)
@@ -1134,7 +1135,7 @@ export async function hydrateBotProfileRuntime(
     : null;
   // Canonical Chats, private-chat topics, group lanes and IM channel lanes follow
   // Profile updates; delegation children stay frozen.
-  const followsProfile = row.role === 'canonical' || row.role === 'thread' || row.role === 'group' || row.role === 'channel';
+  const followsProfile = row.role === 'canonical' || row.role === 'thread' || row.role === 'routine' || row.role === 'group' || row.role === 'channel';
   const runtimeEpochChanged = followsProfile && previousSnapshot !== undefined
     ? previousSnapshot.profileVersion !== row.profileVersion
       || previousRuntimeEpoch?.sha256 !== runtimeEpochSha256

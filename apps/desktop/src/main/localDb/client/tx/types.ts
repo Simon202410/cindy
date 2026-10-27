@@ -1,7 +1,9 @@
 import type { PluginUsageTransaction, PluginUsageHandle } from '../../../../shared/pluginUsage.js';
 import type { TaskTagRequest, TaskTagResult } from '@cindy/maker-shared';
+import type { ChatCacheTransaction, ChatCacheResult } from '../../worker/opHandlers/chatCacheTx.js';
 
 export type DbTxName =
+  | 'chatCache.execute'
   | 'usage.recordMediaSpend'
   | 'authorization.readProjection'
   | 'pluginUsage.execute'
@@ -60,6 +62,7 @@ export type DbTxName =
   | 'bots.persistSessionPermission'
   | 'bots.createGroupLane'
   | 'bots.createChannelLane'
+  | 'bots.createRoutineLane'
   | 'bots.createThreadLane'
   | 'bots.createTaskPartnerLane'
   | 'bots.archiveChannelLanes'
@@ -1413,6 +1416,7 @@ export type DbTxArgsByName = {
   'recentWorkdirs.mergeWindowsIdentity': RecentWorkdirsMergeWindowsIdentityArgs;
   'recentWorkdirs.removeWindowsIdentity': RecentWorkdirsRemoveWindowsIdentityArgs;
   'pluginUsage.execute': PluginUsageTransaction;
+  'chatCache.execute': ChatCacheTransaction;
   'taskTags.execute': TaskTagRequest & { newId?: string; callerSessionId?: string };
   'projectAliases.replaceIdentity': ProjectAliasesReplaceIdentityArgs;
   'toolResults.compactSession': CompactSessionToolResultsArgs;
@@ -1445,6 +1449,7 @@ export type DbTxArgsByName = {
   'bots.persistSessionPermission': { sessionId: string; mode: string };
   'bots.createGroupLane': BotGroupsCreateLaneArgs;
   'bots.createChannelLane': BotsCreateChannelLaneArgs;
+  'bots.createRoutineLane': BotsCreateChannelLaneArgs;
   'bots.createThreadLane': BotsCreateThreadLaneArgs;
   'bots.createTaskPartnerLane': BotsCreateChannelLaneArgs;
   'bots.archiveChannelLanes': BotsArchiveChannelLanesArgs;
@@ -1510,6 +1515,7 @@ export type DbTxResultByName = {
   'recentWorkdirs.mergeWindowsIdentity': undefined;
   'recentWorkdirs.removeWindowsIdentity': { changes: number };
   'pluginUsage.execute': PluginUsageHandle | null;
+  'chatCache.execute': ChatCacheResult;
   'taskTags.execute': TaskTagResult;
   'projectAliases.replaceIdentity': {
     projectKey: string;
@@ -1546,6 +1552,7 @@ export type DbTxResultByName = {
   'bots.persistSessionPermission': { updated: boolean };
   'bots.createGroupLane': BotGroupsCreateLaneResult;
   'bots.createChannelLane': BotGroupsCreateLaneResult;
+  'bots.createRoutineLane': BotGroupsCreateLaneResult;
   'bots.createThreadLane': BotGroupsCreateLaneResult;
   'bots.createTaskPartnerLane': BotGroupsCreateLaneResult;
   'bots.archiveChannelLanes': { archivedSessionIds: string[] };

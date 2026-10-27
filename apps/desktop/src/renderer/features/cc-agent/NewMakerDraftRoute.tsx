@@ -1,3 +1,4 @@
+import { deviceDisplayName } from '@/lib/deviceName';
 import { useRemoteDraftDefaults, useRemoteDraftSelection, useRemoteDraftPush } from './useRemoteDraftDefaults';
 import { isModelEnabled, useModelVisibilityVersion } from '@/state/modelVisibilityPrefs';
 /**
@@ -1209,7 +1210,7 @@ export function NewMakerDraftRoute() {
       effectiveDeviceLinkDeviceId
         ? {
             deviceId: effectiveDeviceLinkDeviceId,
-            deviceName: effectiveDeviceLinkDeviceName ?? effectiveDeviceLinkDeviceId,
+            deviceName: deviceDisplayName(effectiveDeviceLinkDeviceId ?? '', effectiveDeviceLinkDeviceName),
             status:
               deviceLinkProjectsStatus === 'error'
                 ? 'error'
@@ -3768,7 +3769,7 @@ export function NewMakerDraftRoute() {
           // 运行目录(隧道侧 path guard 对「缺 workingDir」本来就是放行的,不放宽任何边界)。
           if (isDeviceLinkDraft && effectiveDeviceLinkDeviceId) {
             const deviceId = effectiveDeviceLinkDeviceId;
-            const deviceName = effectiveDeviceLinkDeviceName ?? deviceId;
+            const deviceName = deviceDisplayName(deviceId, effectiveDeviceLinkDeviceName);
             const invokeRemote = async (channel: string, args: unknown[]) => {
               if (!isCurrentDataOwner()) {
                 throw new RemotePrecreatedWorktreeOwnerChangedError();
@@ -4945,7 +4946,7 @@ export function NewMakerDraftRoute() {
             throw new Error(t('ccAgent.draft.createSessionFailed'));
           }
           const deviceId = effectiveDeviceLinkDeviceId;
-          const deviceName = effectiveDeviceLinkDeviceName ?? deviceId;
+          const deviceName = deviceDisplayName(deviceId, effectiveDeviceLinkDeviceName);
           const ownerAtGoal = dataOwnerAtGoal.dataOwnerId;
           const invokeRemote = async (channel: string, args: unknown[]) => {
             if (!isCurrentDataOwner()) {
@@ -6050,14 +6051,14 @@ export function NewMakerDraftRoute() {
                       {effectiveWorkingDir
                         ? t('ccAgent.draft.remoteProjectBanner', {
                             device:
-                              effectiveDeviceLinkDeviceName ?? effectiveDeviceLinkDeviceId ?? '',
+                              deviceDisplayName(effectiveDeviceLinkDeviceId ?? '', effectiveDeviceLinkDeviceName),
                             project:
                               effectiveWorkingDir.split(/[\\/]/).filter(Boolean).pop() ??
                               effectiveWorkingDir,
                           })
                         : t('ccAgent.draft.remoteDialogueBanner', {
                             device:
-                              effectiveDeviceLinkDeviceName ?? effectiveDeviceLinkDeviceId ?? '',
+                              deviceDisplayName(effectiveDeviceLinkDeviceId ?? '', effectiveDeviceLinkDeviceName),
                           })}
                     </span>
                   </div>
@@ -6078,7 +6079,7 @@ export function NewMakerDraftRoute() {
                         isDeviceLinkDraft
                           ? 'ccAgent.draft.agentDeviceElsewhereBanner'
                           : 'ccAgent.draft.agentDeviceBanner',
-                        { device: draft.agentDeviceName ?? effectiveAgentDeviceId ?? '' },
+                        { device: deviceDisplayName(effectiveAgentDeviceId ?? '', draft.agentDeviceName) },
                       )}
                     </span>
                   </div>
