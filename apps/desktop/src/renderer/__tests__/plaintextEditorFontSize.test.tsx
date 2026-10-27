@@ -31,6 +31,13 @@ describe('PlaintextEditor font-size shortcuts', () => {
 
     expect(view.lineWrapping).toBe(false);
     expect(getComputedStyle(view.scrollDOM).overflowX).toBe('auto');
+    const minimap = container.querySelector<HTMLElement>('.cm-minimap-gutter')!;
+    expect(getComputedStyle(minimap).zIndex).toBe('200');
+    expect(getComputedStyle(minimap).alignSelf).toBe('stretch');
+    expect(getComputedStyle(minimap).backgroundColor).not.toBe('transparent');
+    expect(document.head.textContent).toContain(
+      'color-mix(in srgb, var(--surface-elevated) 82%, transparent)',
+    );
   });
 
   it('changes only the editor override and persists the new size', async () => {

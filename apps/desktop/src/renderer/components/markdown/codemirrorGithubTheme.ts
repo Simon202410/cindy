@@ -214,8 +214,12 @@ function makeEditorTheme(c: typeof githubLightColors, isDark: boolean) {
         userSelect: 'none',
       },
       '.cm-minimap-gutter': {
+        alignSelf: 'stretch',
+        height: 'auto',
         paddingLeft: '0',
         borderLeft: '1px solid var(--border-default)',
+        backgroundColor: 'color-mix(in srgb, var(--surface-elevated) 70%, transparent)',
+        zIndex: '200',
       },
       '.cm-minimap-overlay-container .cm-minimap-overlay': {
         background: 'var(--text-primary)',
