@@ -157,9 +157,8 @@ function makeEditorTheme(c: typeof githubLightColors, isDark: boolean) {
         // HarmonyOS Sans SC(从 body 兜底),字符变细变窄。所以 fontFamily
         // 必须直接挂到 .cm-content 上,见下方。
         lineHeight: '1.5',
-        // Soft wrap (set via EditorView.lineWrapping extension below) +
-        // no horizontal scrollbar.
-        overflowX: 'hidden',
+        // Code intentionally stays unwrapped; long lines scroll horizontally.
+        overflowX: 'auto',
       },
       '.cm-content': {
         // 字体栈对齐预览模式 MarkdownRenderer 的 <pre>(实测 computed family

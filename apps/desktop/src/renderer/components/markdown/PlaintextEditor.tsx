@@ -1389,7 +1389,7 @@ export const PlaintextEditor = forwardRef<PlaintextEditorHandle, PlaintextEditor
         // largeDoc 命中时强制关 highlighting (避免 Lezer 全文 lex);
         // longLine 命中时同时关 wrap (避免 wrap measure 卡死)。
         skipHighlight: docFlags.largeDoc,
-        skipWrap: docFlags.longLine,
+        skipWrap: initialEditorChrome === 'code' || docFlags.longLine,
       };
     }
 

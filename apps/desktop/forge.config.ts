@@ -1770,6 +1770,7 @@ if (isWin) {
 
 const config: ForgeConfig = {
   packagerConfig: {
+    electronZipDir: process.env.CINDY_ELECTRON_ZIP_DIR,
     // sharp 的底层 libvips 共享库 (libvips-cpp.dylib / libvips-42.dll /
     // libvips-cpp.so) 在不同平台上的位置不同:
     //   - macOS / Linux: 住在独立的 @img/sharp-libvips-{platform}-{arch}/ 包,

@@ -19,6 +19,20 @@ afterEach(() => {
 });
 
 describe('PlaintextEditor font-size shortcuts', () => {
+  it('leaves code lines unwrapped by default', () => {
+    const { container } = render(
+      createElement(PlaintextEditor, {
+        initialValue: 'const value = 1;',
+        language: 'typescript',
+      }),
+    );
+    const editor = container.querySelector<HTMLElement>('.cm-editor')!;
+    const view = EditorView.findFromDOM(editor)!;
+
+    expect(view.lineWrapping).toBe(false);
+    expect(getComputedStyle(view.scrollDOM).overflowX).toBe('auto');
+  });
+
   it('changes only the editor override and persists the new size', async () => {
     const setPatch = vi.fn(async () => ({}));
     vi.stubGlobal('electronAPI', {
