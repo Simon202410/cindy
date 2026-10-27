@@ -7,6 +7,8 @@ import {
   LoaderCircle,
   Monitor,
   Play,
+  RefreshCw,
+  RotateCw,
   Smartphone,
   Square,
   TerminalSquare,
@@ -36,6 +38,9 @@ export function XcodeBuildToolbar({ xcode }: { xcode: UseXcodeBuildReturn }) {
   const running = xcode.build?.status === 'running';
   const canBuild = Boolean(
     !running && !xcode.loading && xcode.selectedScheme && xcode.selectedDestination,
+  );
+  const canHotAction = Boolean(
+    running && xcode.build?.phase === 'launched' && xcode.build.supportsHotReload,
   );
   const selectedProject = xcode.projects.find(
     (project) => project.containerPath === xcode.selectedContainerPath,
@@ -166,6 +171,33 @@ export function XcodeBuildToolbar({ xcode }: { xcode: UseXcodeBuildReturn }) {
           <Square size={12} strokeWidth={2.2} fill="currentColor" />
         </button>
       </Tip>
+
+      {running && xcode.build?.supportsHotReload && (
+        <>
+          <Tip text={t('ccAgent.workdirBrowse.xcode.hotReload')} side="bottom">
+            <button
+              type="button"
+              aria-label={t('ccAgent.workdirBrowse.xcode.hotReload')}
+              disabled={!canHotAction}
+              onClick={() => void xcode.hotReload()}
+              className={TOOLBAR_BUTTON_CLASS}
+            >
+              <RefreshCw size={13} strokeWidth={2} />
+            </button>
+          </Tip>
+          <Tip text={t('ccAgent.workdirBrowse.xcode.hotRestart')} side="bottom">
+            <button
+              type="button"
+              aria-label={t('ccAgent.workdirBrowse.xcode.hotRestart')}
+              disabled={!canHotAction}
+              onClick={() => void xcode.hotRestart()}
+              className={TOOLBAR_BUTTON_CLASS}
+            >
+              <RotateCw size={13} strokeWidth={2} />
+            </button>
+          </Tip>
+        </>
+      )}
 
       {xcode.build && (
         <Tip text={t('ccAgent.workdirBrowse.xcode.output')} side="bottom">

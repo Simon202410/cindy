@@ -1308,6 +1308,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     discover: (request) => ipcRenderer.invoke(XCODE_BUILD_INVOKE.DISCOVER, request),
     start: (request) => ipcRenderer.invoke(XCODE_BUILD_INVOKE.START, request),
     stop: (buildId) => ipcRenderer.invoke(XCODE_BUILD_INVOKE.STOP, buildId),
+    flutterAction: (buildId, action) =>
+      ipcRenderer.invoke(XCODE_BUILD_INVOKE.FLUTTER_ACTION, buildId, action),
     getStatus: (request) => ipcRenderer.invoke(XCODE_BUILD_INVOKE.STATUS, request),
     onEvent: (callback: (event: XcodeBuildEvent) => void) =>
       fanOutXcodeBuildEvent((payload) => callback(payload as XcodeBuildEvent)),

@@ -1,3 +1,5 @@
+import { EventEmitter } from 'node:events';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -242,11 +244,93 @@ Available destinations for the "Recipes" scheme:
       .toEqual({
         appPath: '/build/Recipes.app',
         bundleId: 'com.example.recipes',
+        flutterRoot: null,
       });
+  });
+
+  it('uses flutter run for Flutter Debug projects', async () => {
+    const execFile = vi.fn(async (_command: string, args: readonly string[]) => {
+      if (args.includes('-showBuildSettings')) {
+        return {
+          stdout: buildSettings(
+            'com.example.recipes',
+            '/build/Recipes.app',
+            '/flutter',
+          ),
+          stderr: '',
+        };
+      }
+      return { stdout: '', stderr: '' };
+    });
+    const child = new EventEmitter() as EventEmitter & {
+      stdin: { writable: boolean; write: ReturnType<typeof vi.fn> };
+      stdout: EventEmitter;
+      stderr: EventEmitter;
+      kill: ReturnType<typeof vi.fn>;
+    };
+    child.stdin = { writable: true, write: vi.fn() };
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.kill = vi.fn(() => true);
+    const spawn = vi.fn(() => child);
+    const manager = new XcodeBuildManager({
+      dependencies: managerDependencies({
+        execFile,
+        spawn: spawn as unknown as XcodeBuildDependencies['spawn'],
+      }),
+      emit: vi.fn(),
+    });
+
+    const state = await manager.start({
+      sessionId: 'session-1',
+      ownerId: 7,
+      workdir: '/repo',
+      containerPath: 'ios/Recipes.xcworkspace',
+      containerKind: 'workspace',
+      scheme: 'Recipes',
+      destinationId: 'DEVICE-1',
+      destinationPlatform: 'iOS',
+      destinationName: 'Simon’s iPhone',
+      destinationOsVersion: null,
+    });
+    await vi.waitFor(() => expect(spawn).toHaveBeenCalledOnce());
+    expect(spawn).toHaveBeenCalledWith(
+      '/flutter/bin/flutter',
+      ['run', '--debug', '-d', 'DEVICE-1', '--device-timeout', '30'],
+      expect.objectContaining({ cwd: '/repo' }),
+    );
+
+    child.stdout.emit('data', 'Xcode build done.\nSyncing files to device…\n');
+    child.stdout.emit('data', 'Flutter run key commands.\n');
+    await vi.waitFor(() => {
+      expect(manager.status('/repo', 7).state).toMatchObject({
+        status: 'running',
+        phase: 'launched',
+        supportsHotReload: true,
+      });
+    });
+
+    await manager.flutterAction(state.buildId, 7, 'reload');
+    expect(child.stdin.write).toHaveBeenCalledWith('r\n');
+    child.stdout.emit('data', 'Performing hot reload...\n');
+    await vi.waitFor(() => {
+      expect(manager.status('/repo', 7).state?.phase).toBe('reloading');
+    });
+    child.stdout.emit('data', 'Reloaded 1 of 10 libraries.\n');
+    await vi.waitFor(() => {
+      expect(manager.status('/repo', 7).state?.phase).toBe('launched');
+    });
+
+    await manager.flutterAction(state.buildId, 7, 'restart');
+    expect(child.stdin.write).toHaveBeenCalledWith('R\n');
+
+    await manager.stop(state.buildId, 7);
+    expect(child.kill).toHaveBeenCalledWith('SIGINT');
+    expect(manager.status('/repo', 7).state).toMatchObject({ status: 'cancelled' });
   });
 });
 
-function buildSettings(bundleId: string, appPath: string): string {
+function buildSettings(bundleId: string, appPath: string, flutterRoot?: string): string {
   return JSON.stringify([
     {
       target: 'Recipes',
@@ -256,6 +340,7 @@ function buildSettings(bundleId: string, appPath: string): string {
         FULL_PRODUCT_NAME: 'Recipes.app',
         PRODUCT_BUNDLE_IDENTIFIER: bundleId,
         CONFIGURATION: 'Debug',
+        ...(flutterRoot ? { FLUTTER_ROOT: flutterRoot } : {}),
       },
     },
   ]);
@@ -278,6 +363,7 @@ function managerDependencies(
     }) as XcodeBuildDependencies['readdir'],
     createBuildId: () => 'build-1',
     now: () => 100,
+    spawn: vi.fn() as unknown as XcodeBuildDependencies['spawn'],
     ...overrides,
   };
 }

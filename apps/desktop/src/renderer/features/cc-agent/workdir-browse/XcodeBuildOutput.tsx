@@ -35,6 +35,10 @@ export function XcodeBuildOutput({
               ? 'ccAgent.workdirBrowse.xcode.launching'
               : build.phase === 'launched'
                 ? 'ccAgent.workdirBrowse.xcode.appRunning'
+                : build.phase === 'reloading'
+                  ? 'ccAgent.workdirBrowse.xcode.reloading'
+                  : build.phase === 'restarting'
+                    ? 'ccAgent.workdirBrowse.xcode.restarting'
                 : 'ccAgent.workdirBrowse.xcode.building',
         )
       : build.status === 'succeeded'

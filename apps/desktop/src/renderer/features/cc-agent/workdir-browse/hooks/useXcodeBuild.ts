@@ -34,6 +34,8 @@ export interface UseXcodeBuildReturn {
   selectDestination: (destinationId: string) => void;
   startBuild: () => Promise<boolean>;
   stopBuild: () => Promise<void>;
+  hotReload: () => Promise<void>;
+  hotRestart: () => Promise<void>;
   toggleOutput: () => void;
 }
 
@@ -239,6 +241,16 @@ export function useXcodeBuild({
     }
   }, []);
 
+  const runFlutterAction = useCallback(async (action: 'reload' | 'restart') => {
+    const active = currentBuild.current;
+    if (!active || !window.electronAPI.xcode) return;
+    try {
+      await window.electronAPI.xcode.flutterAction(active.buildId, action);
+    } catch (actionError) {
+      setError(errorMessage(actionError));
+    }
+  }, []);
+
   const selectedDestination =
     discovery?.destinations.find((destination) => destination.id === selectedDestinationId) ?? null;
 
@@ -260,6 +272,8 @@ export function useXcodeBuild({
     selectDestination,
     startBuild,
     stopBuild,
+    hotReload: () => runFlutterAction('reload'),
+    hotRestart: () => runFlutterAction('restart'),
     toggleOutput: () => setOutputExpanded((expanded) => !expanded),
   };
 }

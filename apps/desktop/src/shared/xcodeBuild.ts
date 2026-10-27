@@ -2,6 +2,7 @@ export const XCODE_BUILD_INVOKE = {
   DISCOVER: 'xcode-build:discover',
   START: 'xcode-build:start',
   STOP: 'xcode-build:stop',
+  FLUTTER_ACTION: 'xcode-build:flutter-action',
   STATUS: 'xcode-build:status',
 } as const;
 
@@ -15,7 +16,13 @@ export const MAX_XCODE_BUILD_OUTPUT_CHARS = 2_000_000;
 export type XcodeContainerKind = 'workspace' | 'project';
 export type XcodeDestinationKind = 'simulator' | 'device';
 export type XcodeBuildStatus = 'running' | 'succeeded' | 'failed' | 'cancelled';
-export type XcodeBuildPhase = 'building' | 'installing' | 'launching' | 'launched';
+export type XcodeBuildPhase =
+  | 'building'
+  | 'installing'
+  | 'launching'
+  | 'launched'
+  | 'reloading'
+  | 'restarting';
 
 export interface XcodeProjectContainer {
   /** Workdir-relative POSIX path. */
@@ -66,6 +73,7 @@ export interface XcodeBuildState {
   workdir: string;
   status: XcodeBuildStatus;
   phase: XcodeBuildPhase | null;
+  supportsHotReload: boolean;
   exitCode: number | null;
   startedAt: number;
   endedAt: number | null;
@@ -83,6 +91,7 @@ export interface XcodeBuildBridge {
   discover(request: XcodeProjectDiscoveryRequest): Promise<XcodeProjectDiscovery>;
   start(request: XcodeBuildStartRequest): Promise<XcodeBuildState>;
   stop(buildId: string): Promise<void>;
+  flutterAction(buildId: string, action: 'reload' | 'restart'): Promise<void>;
   getStatus(request: { sessionId: string; workdir: string }): Promise<XcodeBuildStatusResult>;
   onEvent(callback: (event: XcodeBuildEvent) => void): () => void;
 }

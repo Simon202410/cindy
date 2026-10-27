@@ -1,4 +1,8 @@
-import { execFile } from 'node:child_process';
+import {
+  execFile,
+  spawn,
+  type ChildProcessWithoutNullStreams,
+} from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -67,6 +71,7 @@ export interface XcodeBuildDependencies {
     args: readonly string[],
     options?: XcodeCommandOptions,
   ) => Promise<XcodeCommandResult>;
+  spawn: typeof spawn;
   now: () => number;
   createBuildId: () => string;
 }
@@ -84,6 +89,7 @@ const defaultDependencies: XcodeBuildDependencies = {
       env: process.env,
       signal: options?.signal,
     }),
+  spawn,
   now: Date.now,
   createBuildId: randomUUID,
 };
@@ -232,6 +238,7 @@ export function parseXcodeBuildDestinations(output: string): XcodeBuildDestinati
 export interface XcodeAppBuildSettings {
   appPath: string;
   bundleId: string;
+  flutterRoot: string | null;
 }
 
 export function parseXcodeAppBuildSettings(output: string): XcodeAppBuildSettings {
@@ -254,6 +261,7 @@ export function parseXcodeAppBuildSettings(output: string): XcodeAppBuildSetting
   const productName = settings?.FULL_PRODUCT_NAME;
   const bundleId = settings?.PRODUCT_BUNDLE_IDENTIFIER;
   const configuration = settings?.CONFIGURATION;
+  const flutterRoot = settings?.FLUTTER_ROOT;
   if (
     typeof targetBuildDir !== 'string' ||
     typeof productName !== 'string' ||
@@ -270,6 +278,7 @@ export function parseXcodeAppBuildSettings(output: string): XcodeAppBuildSetting
   return {
     appPath: path.join(targetBuildDir, productName),
     bundleId,
+    flutterRoot: typeof flutterRoot === 'string' && flutterRoot ? flutterRoot : null,
   };
 }
 
@@ -433,6 +442,7 @@ interface BuildRecord {
   destinationPlatform: string;
   bundleId: string | null;
   launchedPid: number | null;
+  flutterProcess: ChildProcessWithoutNullStreams | null;
   abortController: AbortController;
   stopRequested: boolean;
 }
@@ -489,6 +499,7 @@ export class XcodeBuildManager {
       workdir: normalizedWorkdir,
       status: 'running',
       phase: 'building',
+      supportsHotReload: false,
       exitCode: null,
       startedAt: this.deps.now(),
       endedAt: null,
@@ -501,6 +512,7 @@ export class XcodeBuildManager {
       destinationPlatform: request.destinationPlatform,
       bundleId: null,
       launchedPid: null,
+      flutterProcess: null,
       abortController: new AbortController(),
       stopRequested: false,
     };
@@ -519,6 +531,13 @@ export class XcodeBuildManager {
     if (!record || record.state.status !== 'running') return;
     if (record.ownerId !== ownerId) {
       throwIpcError('PERMISSION_DENIED', 'build belongs to another window');
+    }
+    if (record.flutterProcess) {
+      record.stopRequested = true;
+      record.abortController.abort();
+      record.flutterProcess.kill('SIGINT');
+      this.finish(record, null, 'cancelled');
+      return;
     }
     if (record.state.phase !== 'launched') {
       record.stopRequested = true;
@@ -554,6 +573,30 @@ export class XcodeBuildManager {
       this.appendOutput(record, `Could not confirm app termination: ${commandErrorMessage(error)}\n`);
     }
     this.finish(record, null, 'cancelled');
+  }
+
+  async flutterAction(
+    buildId: string,
+    ownerId: number,
+    action: 'reload' | 'restart',
+  ): Promise<void> {
+    const record = this.records.get(buildId);
+    if (!record || record.ownerId !== ownerId) {
+      throwIpcError('PERMISSION_DENIED', 'build belongs to another window');
+    }
+    if (
+      record.state.status !== 'running' ||
+      record.state.phase !== 'launched' ||
+      !record.state.supportsHotReload ||
+      !record.flutterProcess?.stdin.writable
+    ) {
+      throwIpcError('PRECONDITION_FAILED', 'Flutter run is not ready');
+    }
+    try {
+      record.flutterProcess.stdin.write(action === 'reload' ? 'r\n' : 'R\n');
+    } catch (error) {
+      throwIpcError('INTERNAL', commandErrorMessage(error));
+    }
   }
 
   status(workdir: string, ownerId: number): XcodeBuildStatusResult {
@@ -622,24 +665,6 @@ export class XcodeBuildManager {
     const containerArg = request.containerKind === 'workspace' ? '-workspace' : '-project';
     const destination = `id=${record.destinationId}`;
     try {
-      const build = await this.exec(
-        record,
-        [
-          'xcodebuild',
-          containerArg,
-          absoluteContainer,
-          '-scheme',
-          request.scheme,
-          '-configuration',
-          'Debug',
-          '-destination',
-          destination,
-          'build',
-        ],
-        XCODE_BUILD_TIMEOUT_MS,
-      );
-      this.appendOutput(record, `${build.stdout}${build.stderr}`);
-
       const settingsResult = await this.exec(
         record,
         [
@@ -659,6 +684,28 @@ export class XcodeBuildManager {
       );
       const settings = parseXcodeAppBuildSettings(settingsResult.stdout);
       record.bundleId = settings.bundleId;
+      if (settings.flutterRoot) {
+        await this.runFlutter(record, request, settings.flutterRoot);
+        return;
+      }
+
+      const build = await this.exec(
+        record,
+        [
+          'xcodebuild',
+          containerArg,
+          absoluteContainer,
+          '-scheme',
+          request.scheme,
+          '-configuration',
+          'Debug',
+          '-destination',
+          destination,
+          'build',
+        ],
+        XCODE_BUILD_TIMEOUT_MS,
+      );
+      this.appendOutput(record, `${build.stdout}${build.stderr}`);
       const product = await this.deps.stat(settings.appPath);
       if (!product.isDirectory()) throw new Error('Xcode did not produce an app bundle');
 
@@ -741,6 +788,86 @@ export class XcodeBuildManager {
       this.appendOutput(record, `${commandErrorMessage(error)}\n`);
       this.finish(record, null, 'failed');
     }
+  }
+
+  private async runFlutter(
+    record: BuildRecord,
+    request: XcodeBuildStartRequest,
+    flutterRoot: string,
+  ): Promise<void> {
+    record.state = { ...record.state, supportsHotReload: true };
+    this.options.emit(record.ownerId, { type: 'state', state: { ...record.state } });
+    this.appendOutput(
+      record,
+      `Running flutter run --debug on ${request.destinationName}…\n`,
+    );
+    const child = this.deps.spawn(path.join(flutterRoot, 'bin', 'flutter'), [
+      'run',
+      '--debug',
+      '-d',
+      record.destinationId,
+      '--device-timeout',
+      '30',
+    ], {
+      cwd: record.state.workdir,
+      env: { ...process.env, TERM: 'dumb', NO_COLOR: '1' },
+    });
+    record.flutterProcess = child;
+    let observed = '';
+    let stderrTail = '';
+    const consume = (chunk: Buffer | string, stderr = false) => {
+      const text = chunk.toString();
+      this.appendOutput(record, text);
+      const scan = observed + text;
+      if (stderr) stderrTail = (stderrTail + text).slice(-4_000);
+      if (scan.includes('Xcode build done')) this.setPhase(record, 'installing');
+      if (
+        scan.includes('Syncing files to device') ||
+        scan.includes('Installing and launching')
+      ) {
+        this.setPhase(record, 'launching');
+      }
+      if (
+        scan.includes('Flutter run key commands') ||
+        scan.includes('A Dart VM Service on')
+      ) {
+        this.setPhase(record, 'launched');
+      }
+      if (scan.includes('Performing hot reload')) this.setPhase(record, 'reloading');
+      if (scan.includes('Performing hot restart')) this.setPhase(record, 'restarting');
+      if (
+        scan.includes('Reloaded ') ||
+        scan.includes('Hot reload failed')
+      ) {
+        this.setPhase(record, 'launched');
+      }
+      if (
+        scan.includes('Restarted application') ||
+        scan.includes('Hot restart failed')
+      ) {
+        this.setPhase(record, 'launched');
+      }
+      observed = text.slice(-128);
+    };
+
+    await new Promise<void>((resolve, reject) => {
+      child.stdout.on('data', (chunk: Buffer | string) => consume(chunk));
+      child.stderr.on('data', (chunk: Buffer | string) => consume(chunk, true));
+      child.once('error', (error) => {
+        record.flutterProcess = null;
+        reject(error);
+      });
+      child.once('close', (code) => {
+        record.flutterProcess = null;
+        if (!record.stopRequested && record.state.status === 'running') {
+          if (stderrTail && record.state.phase !== 'launched') {
+            this.appendOutput(record, stderrTail);
+          }
+          this.finish(record, code, code === 0 ? 'succeeded' : 'failed');
+        }
+        resolve();
+      });
+    });
   }
 
   private pruneFinishedRecords(): void {
@@ -844,6 +971,17 @@ export function registerXcodeBuildIpc(options: {
     const requesterId = ownerId(event);
     await manager.stop(requireString(buildId, 'buildId'), requesterId);
   });
+  ipcMain.handle(
+    XCODE_BUILD_INVOKE.FLUTTER_ACTION,
+    async (event, buildId: unknown, action: unknown) => {
+      const requesterId = ownerId(event);
+      const parsedAction = requireString(action, 'action');
+      if (parsedAction !== 'reload' && parsedAction !== 'restart') {
+        throwIpcError('INVALID_PARAMS', 'invalid Flutter action');
+      }
+      await manager.flutterAction(requireString(buildId, 'buildId'), requesterId, parsedAction);
+    },
+  );
   ipcMain.handle(XCODE_BUILD_INVOKE.STATUS, async (event, request: unknown) => {
     const requesterId = ownerId(event);
     const raw = requireObject(request);
