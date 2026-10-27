@@ -218,7 +218,7 @@ function makeEditorTheme(c: typeof githubLightColors, isDark: boolean) {
         height: 'auto',
         paddingLeft: '0',
         borderLeft: '1px solid var(--border-default)',
-        backgroundColor: 'color-mix(in srgb, var(--surface-elevated) 70%, transparent)',
+        backgroundColor: 'color-mix(in srgb, var(--surface-elevated) 88%, transparent)',
         zIndex: '200',
       },
       '.cm-minimap-overlay-container .cm-minimap-overlay': {
