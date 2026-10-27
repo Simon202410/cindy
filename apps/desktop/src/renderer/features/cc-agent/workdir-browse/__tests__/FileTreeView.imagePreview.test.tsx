@@ -185,4 +185,45 @@ describe('FileTreeView Git status decoration', () => {
     expect(screen.getByText('M').textContent).toBe('M');
   });
 
+  it('keeps a selected modified file’s status color', () => {
+    const gitTree: UseFileTreeReturn = {
+      ...makeTree(),
+      entries: new Map([
+        [
+          '',
+          [{ name: 'src', relPath: 'src', type: 'directory', size: 0, mtimeMs: 1 }],
+        ],
+        [
+          'src',
+          [{ name: 'a.ts', relPath: 'src/a.ts', type: 'file', size: 1, mtimeMs: 2 }],
+        ],
+      ]),
+      expanded: new Set(['', 'src']),
+    };
+    render(
+      <FileTreeView
+        tree={gitTree}
+        scrollScope="selected-git-status-decoration-test"
+        selectedPath="src/a.ts"
+        onSelectFile={vi.fn()}
+        gitFiles={
+          new Map([
+            [
+              'src/a.ts',
+              {
+                path: 'src/a.ts',
+                oldPath: null,
+                kind: 'modified',
+                staged: false,
+                unstaged: true,
+              },
+            ],
+          ])
+        }
+      />,
+    );
+
+    expect(screen.getByText('a.ts').style.color).toBe('var(--warning-fg)');
+  });
+
 });

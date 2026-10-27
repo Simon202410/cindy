@@ -58,6 +58,9 @@ import { useConfirmSwitchAwayIfDirty } from '@/features/cc-agent/workdir-browse/
 import { useProjectFileList } from '@/features/cc-agent/workdir-browse/hooks/useProjectFileList';
 import { useWorkdirGitChanges } from '@/features/cc-agent/workdir-browse/hooks/useWorkdirGitChanges';
 import { useRevealFileInTree } from '@/features/cc-agent/workdir-browse/hooks/useRevealFileInTree';
+import { useXcodeBuild } from '@/features/cc-agent/workdir-browse/hooks/useXcodeBuild';
+import { XcodeBuildToolbar } from '@/features/cc-agent/workdir-browse/XcodeBuildToolbar';
+import { XcodeBuildOutput } from '@/features/cc-agent/workdir-browse/XcodeBuildOutput';
 import { SearchPanel } from '@/features/cc-agent/workdir-browse/search/SearchPanel';
 import { FileTreeHeaderActions } from '@/features/cc-agent/workdir-browse/FileTreeHeaderActions';
 import { useProjectSearch } from '@/features/cc-agent/workdir-browse/search/hooks/useProjectSearch';
@@ -150,6 +153,13 @@ function FileBrowserBodyWithWorkdir({
   const tree = useFileTree({ workdir, hideMetaFiles: true, remoteHostId, deviceId, showIgnoredDirs });
   const fileContent = useFileContent(workdir, state.selectedFilePath, remoteHostId, deviceId);
   const gitChanges = useWorkdirGitChanges(ctx.sessionId, workdir, deviceId);
+  const xcode = useXcodeBuild({
+    sessionId: ctx.sessionId,
+    workdir,
+    enabled:
+      window.electronAPI.platform === 'darwin' &&
+      !isRemote,
+  });
   const [externalFile, setExternalFile] = useState<ExternalFileSelection | null>(null);
   const [imageLightboxSrc, setImageLightboxSrc] = useState<string | null>(null);
   const externalFileContent = useFileContent(externalFile?.workdir ?? workdir, externalFile?.relPath ?? null);
@@ -614,26 +624,45 @@ function FileBrowserBodyWithWorkdir({
           统一字号(13/14/12px)、密集 prose 节奏、系统 mono 字体栈、fence 灰底模拟 card,
           做到 CSS 路径能达到的最大对标度。 */}
       <div className="rsb-fbody-compact flex h-full min-w-0 flex-1 flex-col overflow-hidden">
-        <FileBodyView
-          key={externalFile?.absPath ?? 'project-file-browser'}
-          workdir={activeWorkdir}
-          remoteHostId={externalFile ? null : remoteHostId}
-          deviceId={externalFile ? null : deviceId}
-          // 外部文件(externalFile)不属于会话,图片"发送到对话/标注"不适用。
-          sessionId={externalFile ? undefined : ctx.sessionId}
-          relPath={activeRelPath}
-          content={activeContent}
-          allowEdit={!externalFile}
-          changedLines={activeChangedLines}
-          onSaved={
-            externalFile
-              ? undefined
-              : (data) => {
-                  fileContent.setLocal(data);
-                  gitChanges.refresh();
-                }
-          }
-        />
+        <div className="min-h-0 flex-1">
+          <FileBodyView
+            key={externalFile?.absPath ?? 'project-file-browser'}
+            workdir={activeWorkdir}
+            remoteHostId={externalFile ? null : remoteHostId}
+            deviceId={externalFile ? null : deviceId}
+            // 外部文件(externalFile)不属于会话,图片"发送到对话/标注"不适用。
+            sessionId={externalFile ? undefined : ctx.sessionId}
+            relPath={activeRelPath}
+            content={activeContent}
+            allowEdit={!externalFile}
+            changedLines={activeChangedLines}
+            onSaved={
+              externalFile
+                ? undefined
+                : (data) => {
+                    fileContent.setLocal(data);
+                    gitChanges.refresh();
+                  }
+            }
+          />
+        </div>
+        {(xcode.available || xcode.error || xcode.build) && (
+          <div className="shrink-0 border-t border-[var(--cmd-palette-border)]">
+            {xcode.build && xcode.outputExpanded && (
+              <XcodeBuildOutput
+                build={xcode.build}
+                output={xcode.output}
+                expanded
+                onToggle={xcode.toggleOutput}
+              />
+            )}
+            {(xcode.available || xcode.error) && (
+              <div className="flex h-8 items-center justify-end">
+                <XcodeBuildToolbar xcode={xcode} />
+              </div>
+            )}
+          </div>
+        )}
       </div>
       {/* 中间分割线 + resize handle —— 4px 命中宽度,内部 1px 实线;hover 高亮提示
           可拖。双击复位到默认 200px。pointer-events 仅在 handle 上,不挡邻接 pane。

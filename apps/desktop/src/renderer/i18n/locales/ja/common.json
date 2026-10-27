@@ -13444,6 +13444,28 @@
         "hideIgnoredDirs": "無視されるディレクトリを隠す",
         "showIgnoredDirsUnsupported": "相手デバイスの {{appName}} のバージョンが古く、無視されるディレクトリを表示できません"
       },
+      "xcode": {
+      "target": "実行ターゲット",
+        "findingTargets": "ターゲットを検索中…",
+        "noTarget": "ターゲットを選択",
+        "project": "プロジェクト",
+        "scheme": "スキーム",
+        "simulators": "シミュレータ",
+        "devices": "デバイス",
+        "noTargets": "利用できるビルドターゲットがありません",
+      "build": "ビルドして実行",
+      "stop": "実行を停止",
+      "output": "実行出力",
+        "building": "ビルド中…",
+        "installing": "インストール中…",
+        "launching": "起動中…",
+      "appRunning": "App は実行中です",
+        "succeeded": "実行成功",
+        "failed": "実行失敗",
+        "cancelled": "停止しました",
+        "exitCode": "終了コード {{code}}",
+      "waitingForOutput": "ビルド出力を待機中…"
+      },
       "gitStatus": {
         "modified": "変更済み",
         "added": "追加済み",

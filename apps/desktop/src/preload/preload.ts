@@ -68,6 +68,12 @@ import {
 } from '../shared/projectOrderSettings';
 import type { SessionDragPreviewPalette } from '../shared/sessionDragPreview';
 import {
+  XCODE_BUILD_INVOKE,
+  XCODE_BUILD_PUSH,
+  type XcodeBuildBridge,
+  type XcodeBuildEvent,
+} from '../shared/xcodeBuild';
+import {
   AGENT_ISLAND_CONSUME_ENTRY_ALERT_CHANNEL,
   AGENT_ISLAND_GET_DISPLAY_OPTIONS_CHANNEL,
   AGENT_ISLAND_PREVIEW_SOUND_CHANNEL,
@@ -641,6 +647,8 @@ const fanOutRsbNativePopupEvent = createIpcFanOut(RSB_NATIVE_POPUP_EVENT_CHANNEL
 // 每个 tab 自己订阅,fanOut 内部去重 ipcRenderer.on 绑定。
 const fanOutTerminalData = createIpcFanOut('terminal:data');
 const fanOutTerminalExit = createIpcFanOut('terminal:exit');
+// Local Xcode build output stays scoped to the window that started the build.
+const fanOutXcodeBuildEvent = createIpcFanOut(XCODE_BUILD_PUSH.EVENT);
 // RSB web-browser plugin:guest webview 内 Cmd/Ctrl+L 路由。main 端
 // webview-security before-input-event 拦截 → 通知 host renderer 让 active 的
 // BrowserTabBody 调 chrome.focusUrlBar()。
@@ -1294,6 +1302,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onData: (cb: IpcCallback) => fanOutTerminalData(cb),
     onExit: (cb: IpcCallback) => fanOutTerminalExit(cb),
   },
+  // Local Xcode build runner. Output and lifecycle are owned by this window.
+  xcode: {
+    discover: (request) => ipcRenderer.invoke(XCODE_BUILD_INVOKE.DISCOVER, request),
+    start: (request) => ipcRenderer.invoke(XCODE_BUILD_INVOKE.START, request),
+    stop: (buildId) => ipcRenderer.invoke(XCODE_BUILD_INVOKE.STOP, buildId),
+    getStatus: (request) => ipcRenderer.invoke(XCODE_BUILD_INVOKE.STATUS, request),
+    onEvent: (callback: (event: XcodeBuildEvent) => void) =>
+      fanOutXcodeBuildEvent((payload) => callback(payload as XcodeBuildEvent)),
+  } satisfies XcodeBuildBridge,
 
   // 应用级快捷键 (shared/appShortcuts registry 的用户 override 通道)。
   // renderer 只拿 overrides + platform, 生效值合并在 renderer 侧用同一份

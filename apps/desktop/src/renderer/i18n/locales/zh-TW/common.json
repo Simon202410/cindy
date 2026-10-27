@@ -13444,6 +13444,28 @@
         "hideIgnoredDirs": "隱藏被忽略的目錄",
         "showIgnoredDirsUnsupported": "對方裝置的 {{appName}} 版本過舊，暫不支援顯示被忽略的目錄"
       },
+      "xcode": {
+      "target": "執行目標",
+        "findingTargets": "正在尋找目標…",
+        "noTarget": "選擇目標",
+        "project": "專案",
+        "scheme": "Scheme",
+        "simulators": "模擬器",
+        "devices": "裝置",
+        "noTargets": "沒有可用的編譯目標",
+      "build": "編譯並執行",
+      "stop": "停止執行",
+      "output": "執行輸出",
+        "building": "正在編譯…",
+        "installing": "正在安裝…",
+        "launching": "正在啟動…",
+      "appRunning": "App 已啟動",
+        "succeeded": "執行成功",
+        "failed": "執行失敗",
+        "cancelled": "已停止",
+        "exitCode": "結束代碼 {{code}}",
+      "waitingForOutput": "等待編譯輸出…"
+      },
       "gitStatus": {
         "modified": "已修改",
         "added": "新增",

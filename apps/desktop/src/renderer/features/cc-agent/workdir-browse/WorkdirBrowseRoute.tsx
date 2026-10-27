@@ -78,6 +78,9 @@ import {
   buildNormalFileSelectionParams,
   clearConsumedSearchJumpParams,
 } from './lib/fileSelectionParams';
+import { useXcodeBuild } from './hooks/useXcodeBuild';
+import { XcodeBuildOutput } from './XcodeBuildOutput';
+import { XcodeBuildToolbar } from './XcodeBuildToolbar';
 
 const log = createLogger('cc-agent.workdir-browse.route');
 
@@ -195,6 +198,15 @@ function WorkdirBrowseContent() {
     setLocal: setLocalContent,
   } = useFileContent(browsableWorkdir, selectedPath, remoteHostId, deviceId);
   const gitChanges = useWorkdirGitChanges(sessionId, browsableWorkdir, deviceId);
+  const xcode = useXcodeBuild({
+    sessionId: sessionId ?? null,
+    workdir: browsableWorkdir,
+    enabled:
+      window.electronAPI.platform === 'darwin' &&
+      !remoteHostId &&
+      deviceId === null &&
+      !currentSession?.agentDeviceId,
+  });
   const changedLines = selectedPath ? gitChanges.changedLines.get(selectedPath) : undefined;
   useEffect(() => {
     if (content.kind === 'text') gitChanges.scheduleRefresh();
@@ -558,6 +570,23 @@ function WorkdirBrowseContent() {
               onSearchJumpConsumed={handleSearchJumpConsumed}
             />
           </div>
+          {(xcode.available || xcode.error || xcode.build) && (
+            <div className="shrink-0 border-t border-[var(--cmd-palette-border)]">
+              {xcode.build && xcode.outputExpanded && (
+                <XcodeBuildOutput
+                  build={xcode.build}
+                  output={xcode.output}
+                  expanded
+                  onToggle={xcode.toggleOutput}
+                />
+              )}
+              {(xcode.available || xcode.error) && (
+                <div className="flex h-8 items-center justify-end">
+                  <XcodeBuildToolbar xcode={xcode} />
+                </div>
+              )}
+            </div>
+          )}
           {/* Interaction prompt slot — permission/askUser/plan 卡片在这一栏挂出来,
               rail 里只显占位。empty:hidden 让无 pending 时整栏从布局中消失。
               不画 border-t — 卡片自带 border + cornerRadius,视觉边界够清晰,

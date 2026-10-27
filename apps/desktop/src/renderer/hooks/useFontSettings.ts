@@ -151,6 +151,7 @@ export function FontSettingsProvider({ children }: { children: ReactNode }) {
       codeFamily: initial.codeFamily,
       uiSize: initial.uiSize,
       codeSize: initial.codeSize,
+      editorFontSize: initial.editorFontSize,
       terminalFamily: initial.terminalFamily,
       terminalSize: initial.terminalSize,
     };
@@ -163,11 +164,11 @@ export function FontSettingsProvider({ children }: { children: ReactNode }) {
   const writeQueueRef = useRef<Promise<void>>(Promise.resolve());
   const nextRequestIdRef = useRef(0);
 
-  const { uiFamily, codeFamily, uiSize, codeSize } = settings;
+  const { uiFamily, codeFamily, uiSize, codeSize, editorFontSize } = settings;
   useEffect(() => {
     // Terminal appearance is applied to xterm only, never to the global UI/code tokens.
-    applyFontSettings({ uiFamily, codeFamily, uiSize, codeSize });
-  }, [uiFamily, codeFamily, uiSize, codeSize]);
+    applyFontSettings({ uiFamily, codeFamily, uiSize, codeSize, editorFontSize });
+  }, [uiFamily, codeFamily, uiSize, codeSize, editorFontSize]);
 
   useEffect(() => {
     const bridge = getBridge();

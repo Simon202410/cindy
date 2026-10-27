@@ -13444,6 +13444,28 @@
         "hideIgnoredDirs": "무시된 디렉터리 숨기기",
         "showIgnoredDirsUnsupported": "상대 기기의 {{appName}} 버전이 오래되어 무시된 디렉터리를 표시할 수 없습니다"
       },
+      "xcode": {
+      "target": "실행 대상",
+        "findingTargets": "대상 찾는 중…",
+        "noTarget": "대상 선택",
+        "project": "프로젝트",
+        "scheme": "스킴",
+        "simulators": "시뮬레이터",
+        "devices": "기기",
+        "noTargets": "사용 가능한 빌드 대상이 없습니다",
+      "build": "빌드 후 실행",
+      "stop": "실행 중지",
+      "output": "실행 출력",
+        "building": "빌드 중…",
+        "installing": "설치 중…",
+        "launching": "실행 중…",
+      "appRunning": "App 실행 중",
+        "succeeded": "실행 성공",
+        "failed": "실행 실패",
+        "cancelled": "중지됨",
+        "exitCode": "종료 코드 {{code}}",
+      "waitingForOutput": "빌드 출력 대기 중…"
+      },
       "gitStatus": {
         "modified": "수정됨",
         "added": "추가됨",

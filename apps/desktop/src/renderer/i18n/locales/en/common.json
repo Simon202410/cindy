@@ -13498,6 +13498,28 @@
         "hideIgnoredDirs": "Hide ignored directories",
         "showIgnoredDirsUnsupported": "The remote device is running an older {{appName}} version that cannot show ignored directories"
       },
+      "xcode": {
+      "target": "Run target",
+        "findingTargets": "Finding targets…",
+        "noTarget": "Choose a target",
+        "project": "Project",
+        "scheme": "Scheme",
+        "simulators": "Simulators",
+        "devices": "Devices",
+        "noTargets": "No build targets available",
+      "build": "Build and Run",
+      "stop": "Stop",
+      "output": "Run output",
+        "building": "Building…",
+        "installing": "Installing…",
+        "launching": "Launching…",
+      "appRunning": "App is running",
+        "succeeded": "Run succeeded",
+        "failed": "Run failed",
+        "cancelled": "Stopped",
+        "exitCode": "Exit code {{code}}",
+      "waitingForOutput": "Waiting for build output…"
+      },
       "gitStatus": {
         "modified": "Modified",
         "added": "Added",

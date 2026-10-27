@@ -806,8 +806,8 @@ const FileTreeRow = memo(function FileTreeRow({
   const gitKind = gitChange?.kind ?? gitDirectoryChange?.kind;
   const gitVisual = gitKind ? WORKDIR_GIT_STATUS_VISUAL[gitKind] : null;
   const gitLabel = gitKind ? t(`ccAgent.workdirBrowse.gitStatus.${gitKind}`) : undefined;
-  // Selection owns the foreground; status remains on the trailing marker.
-  const fileStatusColor = gitVisual && !isFolder && !selected ? gitVisual.color : undefined;
+  // Keep the file-state color on the name and icon even when the row is active.
+  const fileStatusColor = gitVisual && !isFolder ? gitVisual.color : undefined;
 
   // Indent: 16 px per depth + 8 px base padding.
   const paddingLeft = depth * 16 + 8;

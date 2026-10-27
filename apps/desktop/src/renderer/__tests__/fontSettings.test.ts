@@ -157,6 +157,46 @@ describe('font settings', () => {
     expect(document.body.style.getPropertyValue('--app-editor-font-size')).toBe('');
   });
 
+  it('restores the persisted editor font size when FontSettingsProvider starts', () => {
+    const originalElectronApi = window.electronAPI;
+    Object.defineProperty(window, 'electronAPI', {
+      configurable: true,
+      value: {
+        appearanceSettings: {
+          getSync: () => ({
+            uiFamily: '',
+            codeFamily: '',
+            uiSize: DEFAULT_UI_FONT_SIZE,
+            codeSize: DEFAULT_CODE_FONT_SIZE,
+            editorFontSize: 18,
+            terminalFamily: '',
+            terminalSize: 13,
+            windowZoom: 1,
+            wallpaperId: 'none',
+            wallpaperOverlay: 0.2,
+            wallpaperMotion: 'static',
+          }),
+        },
+      },
+    });
+
+    try {
+      const wrapper = ({ children }: { children: ReactNode }) =>
+        createElement(FontSettingsProvider, null, children);
+      renderHook(() => useFontSettings(), { wrapper });
+
+      expect(document.documentElement.style.getPropertyValue('--app-editor-font-size')).toBe(
+        '18px',
+      );
+      expect(document.body.style.getPropertyValue('--app-editor-font-size')).toBe('18px');
+    } finally {
+      Object.defineProperty(window, 'electronAPI', {
+        configurable: true,
+        value: originalElectronApi,
+      });
+    }
+  });
+
   it('scales UI font-size tokens from uiSize', () => {
     const settings: FontSettings = {
       uiFamily: '',
