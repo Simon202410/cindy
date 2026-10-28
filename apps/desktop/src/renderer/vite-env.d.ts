@@ -1250,6 +1250,8 @@ interface ElectronAPI {
     getState: () => {
       overrides: import('../shared/appShortcuts').AppShortcutOverrides;
       platform: string;
+      /** 运行态: 注册失败 (多为被其它应用占用) 的全局快捷键 id。 */
+      globalFailures?: unknown;
     };
     setOverride: (
       id: import('../shared/appShortcuts').AppShortcutId,
@@ -1263,6 +1265,7 @@ interface ElectronAPI {
     onChanged: (
       callback: (payload: {
         overrides: import('../shared/appShortcuts').AppShortcutOverrides;
+        globalFailures?: unknown;
       }) => void,
     ) => () => void;
   };
@@ -1696,6 +1699,7 @@ interface ElectronAPI {
     refreshSource: (name: string) => Promise<import('../shared/pluginMarket').MarketSourceSummary>;
     gitPreflight: () => Promise<{ ok: boolean; version: string | null }>;
   };
+  pluginContributions: import('../shared/pluginContributions').PluginContributionsApi;
   pluginPublisher: {
     start: (filePath: string) => Promise<{ transferId: string; uploadId: string | null }>;
     status: (transferId: string) => Promise<{ progress: unknown }>;
@@ -2978,7 +2982,12 @@ interface ElectronAPI {
     ) => Promise<{ configured: boolean; enabled: boolean; maskedKey?: string }>;
     clear: () => Promise<{ configured: boolean; enabled: boolean }>;
   };
-  /** 主窗口投影全部任务的关注总数；独立于通知事件及逐任务已读回执。 */
+  /**
+   * 主窗口投影本机需处理任务的关注总数，不是字面「全部任务」。
+   * 不含 device-link 远程会话，不含 scheduler / legacy Schedule 标题自动化会话，
+   * 也不含绑在普通会话上的 heartbeat 完成态（done + 未读 run）。
+   * 本地 learn 会话的待审查等关注态仍计入。独立于通知事件及逐任务已读回执。
+   */
   notificationSetAppAttentionCount: (
     snapshot: import('../shared/sessionAttention').AppAttentionSnapshot,
   ) => Promise<void>;
@@ -3100,6 +3109,12 @@ interface ElectronAPI {
     | { type: 'settings'; tab: 'voice-input' | 'providers' | 'billing' | 'remote-control'; connect?: string; intent?: 'topup' }
     | null
   >;
+
+  /** 全局截图交给新任务: main 唤醒后取走待处理请求 (只有主窗口能取)。 */
+  regionScreenshotCompose?: {
+    onWake: (callback: () => void) => () => void;
+    take: () => Promise<import('../shared/regionScreenshot').RegionScreenshotComposeRequest | null>;
+  };
 
   // ── TextLightbox (text-lightbox F4/F5) ──
   /**
@@ -4425,7 +4440,7 @@ interface ElectronAPI {
     baseRepo: string;
   }) => Promise<import('@/lib/worktree.types').SuggestNameResp>;
   worktreeBranchSyncStatus: (req: import('../shared/worktreeBranchSync').BranchSyncRequest) => Promise<import('../shared/worktreeBranchSync').BranchSyncStatus>;
-  worktreeSyncBranch: (req: import('../shared/worktreeBranchSync').BranchSyncRequest) => Promise<import('../shared/worktreeBranchSync').BranchSyncResult>;
+  worktreeSyncBranch: (req: import('../shared/worktreeBranchSync').BranchSyncRequest) => Promise<import('../shared/worktreeBranchSync').BranchSyncReply>;
   worktreeListBranches: (req: {
     baseRepo: string;
   }) => Promise<import('@/lib/worktree.types').ListBranchesResp>;
@@ -4927,6 +4942,8 @@ interface ElectronAPI {
           contextWindow?: number;
           clearedAt?: string | null;
           pinnedAt?: string | null;
+          /** 任务级「消息免打扰」：不发系统通知 / 灵动岛 / 手机推送 / IM 消息。 */
+          notificationsMuted?: boolean;
           status?: import('@/lib/ccAgent.types').SessionStatus;
           orcaRole?: import('@/lib/ccAgent.types').OrcaRole | null;
           /** 附加只读引用目录覆盖列表 (绝对路径)。 */
@@ -6001,6 +6018,11 @@ interface ElectronAPI {
      */
     getModelContextLimit: (
       target: import('../shared/modelContextLimit').ModelContextLimitTarget,
+    ) => Promise<import('../shared/modelContextLimit').ModelContextLimitView>;
+    setModelCompaction: (
+      target: import('../shared/modelContextLimit').ModelContextLimitTarget,
+      pct: number | null,
+      owner: import('../shared/modelContextLimit').ModelContextLimitOwner,
     ) => Promise<import('../shared/modelContextLimit').ModelContextLimitView>;
     /** 任务窗口档位表的权威边界（与 device-link 的 maker:get-context-window-bounds 同一 handler）。 */
     getSessionContextWindowBounds: (
@@ -7315,6 +7337,7 @@ interface ElectronAPI {
         scheduleName?: string;
         workingDir?: string;
         providerId?: string;
+        modelAgentDeviceId?: string;
         agentKind?: 'claude-code' | 'codex' | 'pi';
         model?: string;
         /** 绑定会话任务:workingDir 空时 main 按会话 meta.workDir 解析落盘/自测目录。 */

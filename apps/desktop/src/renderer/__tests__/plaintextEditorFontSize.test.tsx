@@ -36,7 +36,7 @@ describe('PlaintextEditor font-size shortcuts', () => {
     expect(getComputedStyle(minimap).alignSelf).toBe('stretch');
     expect(getComputedStyle(minimap).backgroundColor).not.toBe('transparent');
     expect(document.head.textContent).toContain(
-      'color-mix(in srgb, var(--surface-elevated) 82%, transparent)',
+      'color-mix(in srgb, var(--surface-elevated) 88%, transparent)',
     );
   });
 

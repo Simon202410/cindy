@@ -1,3 +1,4 @@
+import { emitSessionCreated } from './sessionCreatedBroadcast.js';
 import type { RoutineModel } from '@cindy/maker-scheduler';
 import { todoAccess } from '../../maker-ipc/botTodoAccess.js';
 import { botLinkedProjectAccess } from '../../maker-ipc/botLinkedProjects.js';
@@ -587,6 +588,7 @@ async function ensureBotOwnedLaneSession(input: { botId: string; routeKey: strin
     await syncBotLinkedLanePermissions(result.permissionRepairCanonicalSessionId);
     owner.assertCurrent();
   }
+  if (result.created) emitSessionCreated(result.sessionId);
   return { ok: true, sessionId: result.sessionId, created: result.created };
 }
 
@@ -2933,7 +2935,7 @@ export function registerBotIpc(): void {
     const bots = await getDbClient().drizzle
       .select({ id: botProfiles.id })
       .from(botProfiles)
-      .where(eq(botProfiles.status, 'active'));
+      .where(ne(botProfiles.status, 'deleting'));
     // Older renderers receive empty directories rather than claiming projects.
     const scopes = await collectTaskResponsibilityScopes(
       bots.map((bot) => bot.id),

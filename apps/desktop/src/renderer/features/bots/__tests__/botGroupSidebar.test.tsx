@@ -71,6 +71,7 @@ vi.mock('../botStore', () => ({
 vi.mock('../botGroupStore', () => ({
   useBotGroupList: () => ({ groups: mocks.groups, loaded: true }),
   refreshBotGroups: mocks.refreshGroups,
+  setBotGroupSource: vi.fn(async () => true),
 }));
 vi.mock('../BotDeleteDialog', () => ({ BotDeleteDialog: () => null }));
 vi.mock('../BotGroupCreateDialog', () => ({

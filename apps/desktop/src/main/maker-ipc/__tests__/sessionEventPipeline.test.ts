@@ -679,6 +679,23 @@ describe('production Session event pipeline', () => {
     } finally { close(); await h.dispose(); }
   });
 
+  it('shows the accepted owner reply during a quiet run without changing scheduler attribution', async () => {
+    const h = harness();
+    const close = beginQuietScheduledOutput('check', 'owner-steer-run');
+    const origin = { kind: 'scheduler' as const, scheduleId: 'check', scheduleName: 'Check', runId: 'owner-steer-run' };
+    const ownerAuthored = vi.fn(() => false);
+    Object.assign(h.deps.agentInputCoordinatorHolder, { isActiveInputOwnerAuthored: ownerAuthored });
+    try {
+      h.emit(event('text', { text: 'Background preamble' }, { turnOrigin: origin }));
+      expect(effects.fn('onAssistantTextEvent')).not.toHaveBeenCalled();
+      ownerAuthored.mockReturnValue(true);
+      h.emit(event('text', { text: 'Here is the progress', isFinal: true }, { turnOrigin: origin }));
+      expect(effects.fn('onAssistantTextEvent')).toHaveBeenCalledOnce();
+      expect(JSON.stringify(h.deps.broadcastToAllWindows.mock.calls)).toContain('owner-steer-run');
+      expect(origin.kind).toBe('scheduler');
+    } finally { close(); await h.dispose(); }
+  });
+
   it('keeps redacted terminal fields redacted for quiet scheduler output', async () => {
     const h = harness();
     const close = beginQuietScheduledOutput('check', 'redaction-run');
@@ -737,14 +754,14 @@ describe('production Session event pipeline', () => {
     }
   });
 
-  it('retains accepted private-message visibility for independent Pi notices', async () => {
+  it('keeps independent Pi notices visible after a peer message', async () => {
     const h = harness();
     h.deps.redactEventForRenderer.mockImplementation((value) => value);
     h.deps.agentInputCoordinatorHolder.getActiveInputClientId.mockReturnValue('bot-dm:private-input');
     h.emit(event('text', { text: 'Extension result', isFinal: true }, {
       source: 'pi', standaloneText: true, turnScope: 'background',
     }));
-    expect(effects.fn('onStandaloneTextEvent')).toHaveBeenCalledWith('task', 'Extension result', { botPrivateReply: true });
+    expect(effects.fn('onStandaloneTextEvent')).toHaveBeenCalledWith('task', 'Extension result', { botPrivateReply: false });
     await h.dispose();
   });
 
@@ -2241,7 +2258,7 @@ describe('Bot adapters in the shared event pipeline', () => {
     await h.dispose();
   });
 
-  it('preserves private input provenance in persistence and broadcast before done clears the active input', () => {
+  it('keeps peer replies visible in persistence and broadcast before done clears the input', () => {
     const h = harness();
     h.deps.agentInputCoordinatorHolder.getActiveInputClientId.mockReturnValue('bot-dm:thread:delivery');
     h.deps.agentInputCoordinatorHolder.onTurnEvent.mockImplementation(() => {
@@ -2251,11 +2268,11 @@ describe('Bot adapters in the shared event pipeline', () => {
     // The reply also records which input it answers (companion chats can show it above the reply).
     expect(h.deps.broadcastToAllWindows).toHaveBeenLastCalledWith('maker:event', expect.objectContaining({
       event: expect.objectContaining({ agentMeta: expect.objectContaining({
-        botPrivateReply: true, replyToClientId: 'bot-dm:thread:delivery' }) }),
+        botPrivateReply: false, replyToClientId: 'bot-dm:thread:delivery' }) }),
     }));
     h.emit(event('done'));
     expect(h.deps.broadcastToAllWindows).toHaveBeenCalledWith('maker:event', expect.objectContaining({
-      event: expect.objectContaining({ type: 'done', agentMeta: expect.objectContaining({ botPrivateReply: true }) }),
+      event: expect.objectContaining({ type: 'done', agentMeta: expect.objectContaining({ botPrivateReply: false }) }),
     }));
   });
 
