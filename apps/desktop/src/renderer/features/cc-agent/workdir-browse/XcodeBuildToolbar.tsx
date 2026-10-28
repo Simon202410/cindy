@@ -109,7 +109,9 @@ export function XcodeBuildToolbar({ xcode }: { xcode: UseXcodeBuildReturn }) {
               >
                 {xcode.projects.map((project) => (
                   <DropdownMenuRadioItem key={project.containerPath} value={project.containerPath}>
-                    <span className="min-w-0 truncate">{project.name}</span>
+                    <span className="min-w-0 truncate" title={project.containerPath}>
+                      {project.containerPath}
+                    </span>
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
