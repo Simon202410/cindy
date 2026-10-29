@@ -32,6 +32,7 @@ describe('PlaintextEditor font-size shortcuts', () => {
     expect(view.lineWrapping).toBe(false);
     expect(getComputedStyle(view.scrollDOM).overflowX).toBe('auto');
     const minimap = container.querySelector<HTMLElement>('.cm-minimap-gutter')!;
+    expect(getComputedStyle(minimap).width).toBe('96px');
     expect(getComputedStyle(minimap).zIndex).toBe('200');
     expect(getComputedStyle(minimap).alignSelf).toBe('stretch');
     expect(getComputedStyle(minimap).backgroundColor).not.toBe('transparent');

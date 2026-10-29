@@ -216,10 +216,15 @@ function makeEditorTheme(c: typeof githubLightColors, isDark: boolean) {
       '.cm-minimap-gutter': {
         alignSelf: 'stretch',
         height: 'auto',
+        // 压缩 minimap 默认的 120px 宽度。
+        width: '96px !important',
         paddingLeft: '0',
         borderLeft: '1px solid var(--border-default)',
         backgroundColor: 'color-mix(in srgb, var(--surface-elevated) 88%, transparent)',
         zIndex: '200',
+      },
+      '.cm-minimap-inner canvas': {
+        maxWidth: '96px !important',
       },
       '.cm-minimap-overlay-container .cm-minimap-overlay': {
         background: 'var(--text-primary)',
