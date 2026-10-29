@@ -509,7 +509,8 @@ enum Logos {
     </svg>
     """
     guard let data = svg.data(using: .utf8), let image = NSImage(data: data) else { return nil }
-    image.isTemplate = false
+    // Dark uses the native menu-bar tint and inactive dimming; gray strands are Light-only.
+    image.isTemplate = dark
     image.size = NSSize(width: 18, height: 18)
     image.accessibilityDescription = "Cindy"
     return image
