@@ -423,7 +423,7 @@ import {
 } from './cindy-make/versionRuntimeIdentity.js';
 import { createStorageIpcHandlers } from './cindy-media/storageIpc';
 import { registerLocalAgentConfirmationIpc, cancelLocalAgentConfirmations } from './local-agent/confirmation.js';
-import { disposeLocalAgentHost, localAgentConnections, localAgentDeveloperConnection, revokeLocalAgentConnections } from './local-agent/service.js';
+import { disposeLocalAgentHost, localAgentConnections, localAgentDeveloperConnection, revokeLocalAgentConnections, setLocalAgentCreateVisibleSessions } from './local-agent/service.js';
 import { clearLocalEntries } from './device-link/remoteMediaCacheStore';
 import {
   collectDatabaseSizeWarningStatus,
@@ -622,6 +622,7 @@ import { closeSharedTasksBeforeLogout } from './device-link/sharedTaskRuntime.js
 import { closeSharedTasksBeforeAccountHandover } from './device-link/sharedTaskAccountBoundary.js';
 import { registerSharedTaskIpc } from './device-link/sharedTaskIpc.js';
 import { registerProviderShareIpc } from './device-link/providerShareRuntime.js';
+import { registerSelfHostedRelayIpc } from './device-link/selfHostedRelayRuntime.js';
 import { registerProviderGroupIpc } from './provider-group/ipc.js';
 import { registerProviderGroupRemoteHandler } from './provider-group/remoteRegistration.js';
 import { providerGroupReshare, registerProviderGroupReshare } from './provider-group/reshareRuntime.js';
@@ -8633,6 +8634,10 @@ const registerIpcHandlers = () => {
       assertTrustedAppRendererEvent(event);
       return localAgentConnections(() => assertTrustedAppRendererEvent(event));
     });
+    ipcMain.handle('local-agent:set-create-visible-sessions', (event, connectionId: unknown, enabled: unknown) => {
+      assertTrustedAppRendererEvent(event);
+      return setLocalAgentCreateVisibleSessions(connectionId, enabled, () => assertTrustedAppRendererEvent(event));
+    });
     ipcMain.handle('local-agent:developer-connection', (event) => {
       assertTrustedAppRendererEvent(event);
       return localAgentDeveloperConnection(() => assertTrustedAppRendererEvent(event));
@@ -9943,6 +9948,8 @@ app.on('ready', async () => {
   );
   registerSharedTaskIpc(isSharedTaskAvailable, () => getDeviceLinkStatus() === 'online');
   registerProviderShareIpc();
+  // 自建中转服务(docs/self-hosted-relay-plan.md):本机中转与加入别的中转。
+  registerSelfHostedRelayIpc();
   registerProviderGroupIpc({ reshare: providerGroupReshare });
   registerProviderGroupRemoteHandler({ onGroupChanged: () => providerGroupReshare.kick('group') });
   registerProviderGroupReshare();
