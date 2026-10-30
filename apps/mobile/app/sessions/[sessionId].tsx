@@ -1,3 +1,4 @@
+import { snapshotRichAnswerValues } from '@/session/RichAnswer';
 import { deviceDisplayName } from '@/device-link/deviceName';
 import { SessionQuickSendProvider } from '@/session/SessionQuickSendContext';
 import { incomingShareSlotOrder } from '@/session/mobileLocalAttachmentUpload';
@@ -6304,6 +6305,7 @@ function SessionScreenContent({ beforeSessionSwitchRef, newSessionActionRef }: S
   );
   const conversationShareWidth = buildConversationShareContentWidth(detailViewport);
   const conversationShareColors = useMemo<ConversationShareWebViewColors>(() => ({
+    success: colors.statusDone, warning: colors.warningFg, danger: colors.statusError,
     background: colors.surface,
     border: colors.border,
     ownUserBubble: userBubbleColors,
@@ -6324,7 +6326,18 @@ function SessionScreenContent({ beforeSessionSwitchRef, newSessionActionRef }: S
     textTertiary: colors.textTertiary,
     dark: mode === 'dark',
   }), [colors, mode, userBubbleColors]);
+  // File context and rich-answer memory must agree even when no workdir/device exists.
+  const chatFilePathOrigin = useMemo(() => {
+    const workdir = currentSession?.workingDir?.trim();
+    return deviceId && workdir ? { deviceId, sessionId, workdir } : null;
+  }, [currentSession?.workingDir, deviceId, sessionId]);
+  const snapshotShareRichValues = useCallback((message: ConversationShareMessage) => snapshotRichAnswerValues(message.body, {
+    userId: auth.user?.id,
+    origin: chatFilePathOrigin,
+    messageKey: message.richStateKey ?? message.clientId,
+  }), [auth.user?.id, chatFilePathOrigin]);
   const shareImages = useConversationShareImages(selectedShareMessages, resolveRemoteMedia, {
+    snapshotRichValues: snapshotShareRichValues,
     workdir: currentSession?.workingDir ?? undefined,
     remoteHostId: currentSession?.remoteHostId ?? undefined,
     sessionId,
@@ -6388,6 +6401,7 @@ function SessionScreenContent({ beforeSessionSwitchRef, newSessionActionRef }: S
       && shareSelectionRevisionRef.current === operationSelectionRevision;
     let localUri: string | null = null;
     let shareCompleted = false;
+    let restoreShareSelection: (() => boolean) | undefined;
     setConversationShareBusy(true);
     try {
       // 成功分享的 PNG 要保留给系统扩展读取；回收更早的产物，限制 cache
@@ -6401,14 +6415,16 @@ function SessionScreenContent({ beforeSessionSwitchRef, newSessionActionRef }: S
       if (!localUri) throw new Error(t('session.screen.shareNoLocalImage'));
       const sharing = await import('expo-sharing');
       if (!isShareOperationActive()) return;
+      // 系统面板的 Promise 在关闭后才返回，交接时就收起选择栏。
+      // expo-sharing 不区分取消与完成；只有打开失败才恢复原勾选。
+      restoreShareSelection = shareSelectionStore.exitForShare();
       await sharing.shareAsync(localUri, { mimeType: 'image/png' });
       // shareAsync 成功后系统扩展仍可能读取该 URL；即使当前操作随即失活，
       // 也必须交给下一次有界清理，不能在 finally 中提前删除。
       shareCompleted = true;
-      if (!isShareOperationActive()) return;
-      shareSelectionStore.exit();
     } catch (error) {
-      if (!isShareOperationActive()) return;
+      if (shareOperationSeqRef.current !== operationSeq) return;
+      if (restoreShareSelection ? !restoreShareSelection() : !isShareOperationActive()) return;
       console.warn('[conversation-share] failed to generate or open share image', error);
       Alert.alert(t('session.screen.shareFailedTitle'), t('session.screen.shareImageFailed'));
     } finally {
@@ -9134,8 +9150,8 @@ function SessionScreenContent({ beforeSessionSwitchRef, newSessionActionRef }: S
   // connectionEpoch 在 deps 里确保同 deviceId 断线重连时 memo 重建、linkReady 作废,
   // 避免复用旧 transport epoch 上已 resolve 的握手 promise。
   const chatFilePathContextValue = useMemo<ChatFilePathContextValue | null>(() => {
-    const workdir = currentSession?.workingDir?.trim();
-    if (!deviceId || !workdir) return null;
+    if (!chatFilePathOrigin) return null;
+    const { deviceId, sessionId, workdir } = chatFilePathOrigin;
     let linkReady: Promise<void> | null = null;
     const ensureLink = () => {
       if (!linkReady) {
@@ -9180,15 +9196,13 @@ function SessionScreenContent({ beforeSessionSwitchRef, newSessionActionRef }: S
       },
     };
   }, [
+    chatFilePathOrigin,
     connectionEpoch,
     currentSession?.remoteHostId,
-    currentSession?.workingDir,
-    deviceId,
     maker,
     mode,
     openChatPathTarget,
     openLink,
-    sessionId,
     t,
   ]);
 
@@ -11958,6 +11972,7 @@ function SessionComposerInput({
   const [composerFocused, setComposerFocused] = useState(false);
   const composerPillOpen = useComposerPillOpen(composerDock.enabled && canUseComposer, () => composerInputRef.current?.focus());
   const [composerInputContentHeight, setComposerInputContentHeight] = useState(COMPOSER_INPUT_SINGLE_LINE_CONTENT_HEIGHT);
+  const [composerAttachmentTrayHeight, setComposerAttachmentTrayHeight] = useState(0);
   const [voiceDraftCaretFrame, setVoiceDraftCaretFrame] = useState({ left: 0, top: 0 });
   const voiceDraftCaretRef = useRef<View>(null);
   const voiceDraftMeasuredBlockRef = useRef<View>(null);
@@ -12083,8 +12098,9 @@ function SessionComposerInput({
     const rowChrome = composerCardActive
       ? COMPOSER_CARD_ROW_CHROME_HEIGHT
       : COMPOSER_INPUT_ROW_CHROME_HEIGHT;
-    return COMPOSER_VERTICAL_PADDING_HEIGHT + statusReserve + rowChrome;
-  }, [composerCardActive, voiceStatusVisible]);
+    // 附件托盘与文字同在卡片里:计入 chrome,文字超出时由输入框自己滚、裁掉上方文字。
+    return COMPOSER_VERTICAL_PADDING_HEIGHT + statusReserve + rowChrome + composerAttachmentTrayHeight;
+  }, [composerAttachmentTrayHeight, composerCardActive, voiceStatusVisible]);
   const composerInputMaxContentHeight = useMemo(() => {
     const availableHeight = nativeShellLayout.composerMaxHeight - composerChromeHeight;
     return Math.min(
@@ -12347,6 +12363,7 @@ function SessionComposerInput({
                     accessibilityLabel={t('session.screen.composerPlaceholder')}
                     accessibilityHint={composerLayout.input.disabledReason ?? undefined}
                     accessoryAbove={controls.attachmentTray}
+                    onAccessoryAboveHeightChange={setComposerAttachmentTrayHeight}
                     autoFocus={visualFocusComposer}
                     cardActive={composerCardActive}
                     caretHidden={voiceIsListening}
