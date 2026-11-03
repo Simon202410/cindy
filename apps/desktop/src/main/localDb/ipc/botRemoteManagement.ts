@@ -8,7 +8,13 @@ import { createBotRemoteSettingsResource } from './botRemoteSettingsResource.js'
 import { createBotProfile, createBotCanonicalSession, getBotMemoryService, getBotRemoteResourceSource, getBotRemoteSettingsSource, readBotSettingsProfile, searchBotHistory, setBotProfileAvatar, updateBotProfile } from './bots.js';
 import { activeOwnerScopeKey, isAppSessionBoundaryPending } from '../../appSessionState.js';
 import { throwIpcError } from '../../utils/ipcValidate.js';
-import { listBotSkillsForBot, readBotSkillForBot, saveBotSkillForSession, deleteBotSkillForBot } from '../../maker-ipc/botSkillService.js';
+import {
+  listBotSkillsForBot,
+  readBotSkillForBot,
+  saveBotSkillForSession,
+  deleteBotSkillForBot,
+  updateBotSkillForSession,
+} from '../../maker-ipc/botSkillService.js';
 import { requestBotRuntimeEpochRefresh } from '../../maker-ipc/botRuntimeEpochRefreshSignal.js';
 import { createBotRemoteEditors } from './botRemoteEditors.js';
 import { decodeBotAvatarImage } from './botAvatarSelection.js';
@@ -187,6 +193,21 @@ const settingsHost = createBotRemoteSettingsHost({
     canonicalSessionId: async botId => (await getBotRemoteSettingsSource(botId)).source.canonicalSessionId ?? null,
     capabilities: (callerSessionId, kind) => listBotSettingsCapabilities({ callerSessionId, kind }),
     personalSkills: listBotSkillsForBot,
+    personalSkill: readBotSkillForBot,
+    async updatePersonalSkill(botId, input) {
+      const { source } = await getBotRemoteSettingsSource(botId);
+      if (!source.canonicalSessionId) throwIpcError('PRECONDITION_FAILED', 'Teammate unavailable');
+      const result = await updateBotSkillForSession({ callerSessionId: source.canonicalSessionId, ...input });
+      if (!result.ok) {
+        throwIpcError(
+          result.errorCode === 'NOT_FOUND' ? 'NOT_FOUND'
+            : result.errorCode === 'INVALID_ARGS' || result.errorCode === 'SKILL_BODY_TOO_LARGE'
+              ? 'INVALID_PARAMS' : 'PRECONDITION_FAILED',
+          'Skill could not be saved; refresh before retrying',
+        );
+      }
+      return result.skill;
+    },
     autonomy: { get: getBotAutonomySettingsView, set: setBotAutonomySchedulerBotId, reset: resetBotAutonomySchedulerSettings },
     searchHistory: searchBotHistory,
     routines: {

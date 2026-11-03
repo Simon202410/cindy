@@ -6000,6 +6000,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       },
       listSkills: (botId: string): Promise<import('../shared/botSkill').BotSkillSummary[]> =>
         ipcRenderer.invoke('local-db:bots:skills:list', botId),
+      readSkill: (botId: string, slug: string): Promise<import('../shared/botSkill').BotSkillDetail | null> =>
+        ipcRenderer.invoke('local-db:bots:skills:read', botId, slug),
+      updateSkill: (
+        botId: string,
+        input: import('../shared/botSkill').BotSkillUpdateInput,
+      ): Promise<import('../shared/botSkill').BotSkillDetail> =>
+        ipcRenderer.invoke('local-db:bots:skills:update', botId, input),
       memory: {
         list: (botId: string, query?: string): Promise<unknown> =>
           ipcRenderer.invoke('local-db:bots:memory:list', botId, query),

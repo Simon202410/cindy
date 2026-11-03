@@ -34,6 +34,7 @@ import {
 import type {
   BotSkillDetail,
   BotSkillSummary as SharedBotSkillSummary,
+  BotSkillUpdateInput,
 } from '../../shared/botSkill.js';
 import { getDbClient } from '../localDb/client/current.js';
 import { botProfiles, botSessionLinks, sessions } from '../localDb/schema.js';
@@ -264,6 +265,66 @@ export async function saveBotSkillForSession(
         name: record.name,
         description: record.description,
         updatedAt: record.updatedAt,
+      },
+    };
+  } catch (cause) {
+    return storeError(cause);
+  }
+}
+
+/**
+ * Settings-page edit or mount toggle. Content edits preserve the current
+ * enabled state; toggling moves the whole Skill folder without deleting files.
+ */
+export async function updateBotSkillForSession(
+  params: { callerSessionId: string; callerSessionInstanceId?: string } & BotSkillUpdateInput,
+  deps: BotSkillServiceDeps = {},
+): Promise<BotSkillResult<{ skill: BotSkillDetail }>> {
+  try {
+    const boundary = captureOwnerBoundary(deps);
+    const owner = await (deps.resolveBotId
+      ?? ((id, instanceId) => defaultResolveBotId(id, false, instanceId)))(
+      params.callerSessionId, params.callerSessionInstanceId,
+    );
+    if (!owner.ok) return owner;
+    assertOwnerBoundary(deps, boundary);
+    const home = await skillHomeOf(deps, owner.botId, boundary);
+    const current = await readBotSkill(home, owner.botId, params.slug);
+    if (!current) return { ok: false, errorCode: 'NOT_FOUND', message: 'Skill not found' };
+    if (params.expectedUpdatedAt !== undefined && current.updatedAt !== params.expectedUpdatedAt) {
+      return { ok: false, errorCode: 'INVALID_ARGS', message: 'Skill changed during review' };
+    }
+
+    if (params.name !== undefined || params.description !== undefined || params.body !== undefined) {
+      await saveBotSkill(home, owner.botId, {
+        slug: current.slug,
+        name: params.name ?? current.name,
+        description: params.description ?? current.description,
+        body: params.body ?? current.body,
+        expectedUpdatedAt: current.updatedAt,
+      });
+    }
+    const currentlyEnabled = current.enabled !== false;
+    if (params.enabled !== undefined && params.enabled !== currentlyEnabled) {
+      const source = await readBotSkillSource(home, owner.botId, current.slug);
+      if (!source) return { ok: false, errorCode: 'NOT_FOUND', message: 'Skill not found' };
+      await saveBotSkillSource(home, owner.botId, current.slug, source, { enabled: params.enabled });
+    }
+
+    const updated = await readBotSkill(home, owner.botId, current.slug);
+    if (!updated) return { ok: false, errorCode: 'NOT_FOUND', message: 'Skill not found' };
+    assertOwnerBoundary(deps, boundary);
+    await (deps.requestRefresh ?? requestBotRuntimeEpochRefresh)(owner.canonicalSessionId ?? params.callerSessionId, 'resource');
+    assertOwnerBoundary(deps, boundary);
+    return {
+      ok: true,
+      skill: {
+        slug: updated.slug,
+        name: updated.name,
+        description: updated.description,
+        updatedAt: updated.updatedAt,
+        body: updated.body,
+        ...(updated.enabled === false ? { enabled: false } : {}),
       },
     };
   } catch (cause) {

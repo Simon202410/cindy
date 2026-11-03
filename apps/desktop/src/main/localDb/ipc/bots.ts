@@ -8,7 +8,11 @@ import type { TodoPatch } from '@cindy/maker-shared/teammate-todo';
  * Bot profile 与 Session 归属只在这里写入 SQLite；renderer 只读取投影，
  * 不维护第二份资料或决定 canonical Session。
  */
-import { listBotSkillsForBot } from '../../maker-ipc/botSkillService.js';
+import {
+  listBotSkillsForBot,
+  readBotSkillForBot,
+  updateBotSkillForSession,
+} from '../../maker-ipc/botSkillService.js';
 import { provisionDefaultBot } from '../../maker-ipc/botDefaultProvisioning.js';
 import { BOT_TEMPLATE_PRESET_AVATARS, CINDY_DEFAULT_IDENTITY } from '../../../shared/botTemplatePreset.js';
 import fs from 'node:fs/promises';
@@ -3048,6 +3052,62 @@ export function registerBotIpc(): void {
     const skills = await listBotSkillsForBot(botId);
     owner.assertCurrent();
     return skills;
+  });
+  ipcMain.handle('local-db:bots:skills:read', async (event, rawBotId: unknown, rawSlug: unknown) => {
+    assertTrustedAppRendererEvent(event);
+    const botId = readText(rawBotId, 'botId', 128, true);
+    const slug = readText(rawSlug, 'slug', 64, true);
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(slug)) throwIpcError('INVALID_PARAMS', 'Invalid skill slug');
+    const owner = captureBotOperationOwner();
+    await getBotRemoteSettingsSource(botId);
+    owner.assertCurrent();
+    const skill = await readBotSkillForBot(botId, slug);
+    owner.assertCurrent();
+    if (!skill) throwIpcError('NOT_FOUND', 'Skill unavailable');
+    return skill;
+  });
+  ipcMain.handle('local-db:bots:skills:update', async (event, rawBotId: unknown, rawInput: unknown) => {
+    assertTrustedAppRendererEvent(event);
+    const botId = readText(rawBotId, 'botId', 128, true);
+    const input = requireObject(rawInput, 'skill');
+    const allowed = ['slug', 'name', 'description', 'body', 'enabled', 'expectedUpdatedAt'];
+    if (Object.keys(input).some(key => !allowed.includes(key))) throwIpcError('INVALID_PARAMS', 'Invalid skill update');
+    const slug = readText(input.slug, 'slug', 64, true);
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(slug)) throwIpcError('INVALID_PARAMS', 'Invalid skill slug');
+    const patch = {
+      slug,
+      ...(input.name !== undefined ? { name: readText(input.name, 'name', 64, true) } : {}),
+      ...(input.description !== undefined ? { description: readText(input.description, 'description', 280, true) } : {}),
+      ...(input.body !== undefined ? { body: readText(input.body, 'body', 55_000, true) } : {}),
+      ...(input.enabled !== undefined ? {
+        enabled: typeof input.enabled === 'boolean'
+          ? input.enabled : throwIpcError('INVALID_PARAMS', 'Invalid skill state'),
+      } : {}),
+      ...(input.expectedUpdatedAt !== undefined
+        ? { expectedUpdatedAt: readText(input.expectedUpdatedAt, 'expectedUpdatedAt', 64, true) }
+        : {}),
+    };
+    if (!('name' in patch || 'description' in patch || 'body' in patch || 'enabled' in patch)) {
+      throwIpcError('INVALID_PARAMS', 'Skill update is empty');
+    }
+    const owner = captureBotOperationOwner();
+    const { source } = await getBotRemoteSettingsSource(botId);
+    owner.assertCurrent();
+    if (!source.canonicalSessionId) throwIpcError('PRECONDITION_FAILED', 'Teammate unavailable');
+    const result = await updateBotSkillForSession({
+      callerSessionId: source.canonicalSessionId,
+      ...patch,
+    });
+    if (!result.ok) {
+      throwIpcError(
+        result.errorCode === 'NOT_FOUND' ? 'NOT_FOUND'
+          : result.errorCode === 'INVALID_ARGS' || result.errorCode === 'SKILL_BODY_TOO_LARGE'
+            ? 'INVALID_PARAMS' : 'PRECONDITION_FAILED',
+        'Skill could not be saved; refresh before retrying',
+      );
+    }
+    owner.assertCurrent();
+    return result.skill;
   });
   ipcMain.handle('local-db:bots:memory:list', async (event, rawBotId: unknown, rawQuery: unknown) => {
     assertTrustedAppRendererEvent(event);

@@ -18,6 +18,7 @@ import {
   listBotSkillsForSession,
   readBotSkillForBot,
   saveBotSkillForSession,
+  updateBotSkillForSession,
 } from '../botSkillService';
 import {
   beginChannelToolScope,
@@ -201,6 +202,39 @@ describe('设置页与会话挂载读的是同一份磁盘事实', () => {
   it('returns nothing to mount for a Bot that never learned anything', async () => {
     const mounts = await collectBotOwnSkillMounts('bot-fresh', { userDataDir });
     expect(mounts.skills).toEqual([]);
+  });
+});
+
+describe('设置页编辑与开关', () => {
+  it('moves a learned Skill out of the runtime without losing its content, and keeps it off after edits', async () => {
+    const requestRefresh = vi.fn(async () => true);
+    const deps = { ...depsFor('bot-1'), requestRefresh };
+    await saveBotSkillForSession(SAVE, deps);
+    requestRefresh.mockClear();
+
+    const disabled = await updateBotSkillForSession(
+      { callerSessionId: 'session-1', slug: 'weekly-report', enabled: false },
+      deps,
+    );
+    expect(disabled).toMatchObject({ ok: true, skill: { enabled: false, body: SAVE.body } });
+    expect(await listBotSkillsForBot('bot-1', { userDataDir })).toMatchObject([
+      { slug: 'weekly-report', enabled: false },
+    ]);
+
+    const edited = await updateBotSkillForSession(
+      { callerSessionId: 'session-1', slug: 'weekly-report', body: 'Updated body' },
+      deps,
+    );
+    expect(edited).toMatchObject({ ok: true, skill: { enabled: false, body: 'Updated body' } });
+    expect(requestRefresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('refuses a stale detail edit instead of overwriting a newer Skill', async () => {
+    await saveBotSkillForSession(SAVE, depsFor('bot-1'));
+    expect(await updateBotSkillForSession(
+      { callerSessionId: 'session-1', slug: 'weekly-report', body: 'stale', expectedUpdatedAt: 'old' },
+      depsFor('bot-1'),
+    )).toMatchObject({ ok: false, errorCode: 'INVALID_ARGS' });
   });
 });
 

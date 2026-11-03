@@ -16,7 +16,7 @@ import {
 import type { BotModelRoute } from '../../../shared/botModelChain.js';
 import type { BotLifecycleActionRequest } from '../../../shared/botLifecycle.js';
 import type { BotMemoryDeleteInput, BotMemoryUpdateInput } from '../../../shared/botMemory.js';
-import type { BotSkillSummary } from '../../../shared/botSkill.js';
+import type { BotSkillDetail, BotSkillSummary, BotSkillUpdateInput } from '../../../shared/botSkill.js';
 import { parseRoutineInput, type Routine, type RoutineRun, type RoutineSource } from '@cindy/maker-scheduler';
 import { throwIpcError } from '../../utils/ipcValidate.js';
 import type { BotSettingsCall, BotSettingsOpHandler } from './botRemoteSettingsHost.js';
@@ -48,6 +48,8 @@ export interface BotSettingsOpsDeps {
   canonicalSessionId(botId: string): Promise<string | null>;
   capabilities(callerSessionId: string, kind: Kind): Promise<BotCapabilityCatalogEntry[]>;
   personalSkills(botId: string): Promise<BotSkillSummary[]>;
+  personalSkill(botId: string, slug: string): Promise<BotSkillDetail | null>;
+  updatePersonalSkill(botId: string, input: BotSkillUpdateInput): Promise<BotSkillDetail>;
   autonomy: {
     get(): Promise<BotAutonomySettingsView>;
     set(schedulerBotId: string | null): Promise<BotAutonomySettingsView>;
@@ -219,6 +221,34 @@ export function createBotRemoteSettingsOps(deps: BotSettingsOpsDeps): Partial<Re
       const personal = await deps.personalSkills(botId);
       const entries = await Promise.all(KINDS.map(async kind => [kind, await deps.capabilities(callerSessionId, kind)] as const));
       return { personal, entries: Object.fromEntries(entries) };
+    },
+    'skills.read': async call => {
+      const slug = text(call.args.slug, 'slug', 64);
+      if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(slug)) fail('Invalid skill slug');
+      const skill = await deps.personalSkill(botOf(call), slug);
+      return skill ?? throwIpcError('NOT_FOUND', 'Skill unavailable');
+    },
+    'skills.update': async call => {
+      const input = record(call.args, 'skill');
+      keysWithin(input, ['slug', 'name', 'description', 'body', 'enabled', 'expectedUpdatedAt'], 'skill');
+      const slug = text(input.slug, 'slug', 64);
+      if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(slug)) fail('Invalid skill slug');
+      const update: BotSkillUpdateInput = {
+        slug,
+        ...(input.name !== undefined ? { name: text(input.name, 'name', 64) } : {}),
+        ...(input.description !== undefined ? { description: text(input.description, 'description', 280) } : {}),
+        ...(input.body !== undefined ? { body: text(input.body, 'body', 55_000) } : {}),
+        ...(input.enabled !== undefined ? {
+          enabled: typeof input.enabled === 'boolean' ? input.enabled : fail('enabled is invalid'),
+        } : {}),
+        ...(input.expectedUpdatedAt !== undefined
+          ? { expectedUpdatedAt: text(input.expectedUpdatedAt, 'expectedUpdatedAt', 64) }
+          : {}),
+      };
+      if (!('name' in update || 'description' in update || 'body' in update || 'enabled' in update)) {
+        fail('Skill update is empty');
+      }
+      return deps.updatePersonalSkill(botOf(call), update);
     },
     'autonomy.get': async () => deps.autonomy.get(),
     'autonomy.set': async call => {

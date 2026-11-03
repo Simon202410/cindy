@@ -5079,6 +5079,11 @@ interface ElectronAPI {
         resetSettings: () => Promise<import('../shared/botAutonomy').BotAutonomySettingsView>;
       };
       listSkills: (botId: string) => Promise<import('../shared/botSkill').BotSkillSummary[]>;
+      readSkill: (botId: string, slug: string) => Promise<import('../shared/botSkill').BotSkillDetail | null>;
+      updateSkill: (
+        botId: string,
+        input: import('../shared/botSkill').BotSkillUpdateInput,
+      ) => Promise<import('../shared/botSkill').BotSkillDetail>;
       memory: {
         list: (
           botId: string,

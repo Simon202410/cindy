@@ -30,10 +30,24 @@ afterEach(() => {
 
 describe('controlled capability page lifetime', () => {
   it('unsubscribes when hidden and loads afresh when reopened', async () => {
+    const updateSkill = vi.fn(async () => ({
+      slug: 'weekly-report',
+      name: '整理工作周报',
+      description: 'How',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      body: 'Body',
+      enabled: false,
+    }));
     Object.defineProperty(window, 'electronAPI', {
       configurable: true,
       value: {
-        localDb: { sessionsPush: { onPatched: () => h.offPush }, bots: { listSkills: async () => [{ slug: 'weekly-report', name: '整理工作周报', enabled: true }] } },
+        localDb: {
+          sessionsPush: { onPatched: () => h.offPush },
+          bots: {
+            listSkills: async () => [{ slug: 'weekly-report', name: '整理工作周报', description: 'How', enabled: true }],
+            updateSkill,
+          },
+        },
         maker: {
           onMcpChanged: () => h.offMcp,
           listCustomMcpServers: h.list,
@@ -55,7 +69,12 @@ describe('controlled capability page lifetime', () => {
     await waitFor(() => expect(view.getByText('整理工作周报')).toBeTruthy());
     const checkbox = view.getByRole('switch', { name: '整理工作周报' }) as HTMLButtonElement;
     expect(checkbox.getAttribute('aria-checked') === 'true').toBe(true);
-    expect(checkbox.disabled).toBe(true);
+    expect(checkbox.disabled).toBe(false);
+    fireEvent.click(checkbox);
+    await waitFor(() => expect(updateSkill).toHaveBeenCalledWith('bot-1', {
+      slug: 'weekly-report',
+      enabled: false,
+    }));
     view.rerender(<BotCapabilitySettings {...props} expanded={false} />);
     expect(h.offLocal).toHaveBeenCalledOnce();
     expect(h.offPush).toHaveBeenCalledOnce();
@@ -64,6 +83,51 @@ describe('controlled capability page lifetime', () => {
     view.rerender(<BotCapabilitySettings {...props} expanded />);
     await waitFor(() => expect(h.list).toHaveBeenCalledTimes(2));
   });
+});
+
+it('opens a learned Skill for viewing and saves edits with its revision', async () => {
+  const detail = {
+    slug: 'weekly-report',
+    name: 'Weekly report',
+    description: 'How to prepare it',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    body: 'Original body',
+  };
+  const readSkill = vi.fn(async () => detail);
+  const updateSkill = vi.fn(async (_botId: string, input: Record<string, unknown>) => ({ ...detail, ...input }));
+  Object.defineProperty(window, 'electronAPI', { configurable: true, value: {
+    localDb: {
+      sessionsPush: { onPatched: () => h.offPush },
+      bots: {
+        listSkills: async () => [{ slug: 'weekly-report', name: 'Weekly report', description: 'How to prepare it', enabled: true }],
+        readSkill,
+        updateSkill,
+      },
+    },
+    maker: {
+      onMcpChanged: () => h.offMcp,
+      listCustomMcpServers: h.list,
+      listAgentSkills: async () => ({ success: true, skills: [] }),
+      plugins: { list: async () => [] },
+    },
+  } });
+  const view = render(<BotCapabilitySettings expanded
+    bot={{ id: 'bot-1', canonicalSessionId: 's1' } as BotProfile}
+    capabilities={{ modelChain: [], modelChainOverride: null, mcpServers: [], toolsets: [] } as unknown as BotProfile['capabilities']}
+    skills={[]} onChange={vi.fn()} />);
+
+  await waitFor(() => expect(view.getByText('Weekly report')).toBeTruthy());
+  fireEvent.click(view.getByRole('button', { name: 'bots.capabilities.personalSkill.open' }));
+  await waitFor(() => expect(readSkill).toHaveBeenCalledWith('bot-1', 'weekly-report'));
+  fireEvent.change(view.getByDisplayValue('Original body'), { target: { value: 'Updated body' } });
+  fireEvent.click(view.getByRole('button', { name: 'bots.save' }));
+  await waitFor(() => expect(updateSkill).toHaveBeenCalledWith('bot-1', {
+    slug: 'weekly-report',
+    name: 'Weekly report',
+    description: 'How to prepare it',
+    body: 'Updated body',
+    expectedUpdatedAt: detail.updatedAt,
+  }));
 });
 
 it('shows the name, not the internal id, of a kept reference this computer does not have', async () => {

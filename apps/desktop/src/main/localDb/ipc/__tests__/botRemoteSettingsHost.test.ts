@@ -46,6 +46,8 @@ function setup(overrides: { allowed?: boolean; visible?: boolean; ownerCurrent?:
     canonicalSessionId: vi.fn(async () => 'main'),
     capabilities: vi.fn(async () => []),
     personalSkills: vi.fn(async () => []),
+    personalSkill: vi.fn(async () => null),
+    updatePersonalSkill: vi.fn(async () => ({ slug: 'brief', name: 'Brief', description: 'd', updatedAt: '1', body: 'b' })),
     autonomy: { get: vi.fn(), set: vi.fn(), reset: vi.fn() },
     searchHistory: vi.fn(async () => ({ results: [] })),
     channels: {

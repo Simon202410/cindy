@@ -31,6 +31,7 @@ const refused = (code: string, message: string) => ({ result: { ok: false, code,
 const sent = (call = 0) => host.invoke.mock.calls[call][2][0] as { input: { op: BotSettingsOp; args?: Record<string, unknown> }; resourceRef?: { id: string } };
 const ALL_OPS = ['caps', 'profile.get', 'profile.update', 'profile.chooseAvatar', 'profile.retryInvitation', 'lifecycle.run', 'models.default',
   'memory.list', 'memory.read', 'memory.update', 'memory.delete', 'capabilities.catalog', 'autonomy.get', 'autonomy.set', 'autonomy.reset', 'history.search',
+  'skills.read', 'skills.update',
   'routines.list', 'routines.sources', 'routines.history', 'routines.save', 'routines.runNow', 'routines.remove',
   'voice.models', 'voice.voices', 'voice.preference', 'voice.setPreference',
   'channels.im.list', 'channels.im.remove', 'channels.wechat.get', 'channels.x.get'] as BotSettingsOp[];
@@ -113,11 +114,30 @@ it('builds the capability lists from the host catalog without the fixed baseline
   }));
   const catalog = await target.capabilities.load({ id: 'bot-1' } as never, [], () => true);
   expect(catalog.skill).toEqual([
-    { id: 'personal:brief', name: 'Brief', available: false, personal: true },
+    { id: 'personal:brief', personalSlug: 'brief', name: 'Brief', description: '', available: false, personal: true },
     { id: 'review', name: 'review', description: 'Review', available: true },
   ]);
   expect(catalog.mcp).toEqual([{ id: 'm1', name: 'Docs', description: 'http', available: false }]);
   expect(catalog.toolset?.map((item) => item.id)).toEqual(['browser']);
+});
+
+it('reads, edits and toggles a learned Skill through the host that declares the operations', async () => {
+  const { target } = create();
+  expect(target.capabilities.personal).toBeDefined();
+  const detail = { slug: 'brief', name: 'Brief', description: 'How', updatedAt: '1', body: 'Body' };
+  host.invoke.mockResolvedValueOnce(ok(detail));
+  await expect(target.capabilities.personal!.read('bot-1', 'brief')).resolves.toEqual(detail);
+  expect(sent()).toMatchObject({ resourceRef: { id: 'bot-1' }, input: { op: 'skills.read', args: { slug: 'brief' } } });
+
+  host.invoke.mockResolvedValueOnce(ok({ ...detail, enabled: false }));
+  await target.capabilities.personal!.update('bot-1', { slug: 'brief', enabled: false });
+  expect(sent(1)).toMatchObject({
+    resourceRef: { id: 'bot-1' },
+    input: { op: 'skills.update', args: { slug: 'brief', enabled: false } },
+  });
+
+  const older = create(ALL_OPS.filter(op => op !== 'skills.read' && op !== 'skills.update'));
+  expect(older.target.capabilities.personal).toBeUndefined();
 });
 
 it('does not re-read a deleted teammate after the lifecycle action', async () => {

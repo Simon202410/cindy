@@ -5,7 +5,7 @@ import type { BotAutonomySettingsView } from '../../../shared/botAutonomy';
 import type { BotLifecycleActionRequest, BotLifecycleActionResult } from '../../../shared/botLifecycle';
 import type { BotModelRoute } from '../../../shared/botModelChain';
 import type { ConversationSearchResponse } from '../../../shared/conversationSearch';
-import type { BotSkillSummary } from '../../../shared/botSkill';
+import type { BotSkillDetail, BotSkillSummary, BotSkillUpdateInput } from '../../../shared/botSkill';
 import type { BotProfile, BotProfileUpdatePatch } from './botStore';
 
 export type BotCapabilityKind = 'skill' | 'mcp' | 'toolset';
@@ -15,6 +15,8 @@ export type BotCapabilityEntry = {
   description?: string;
   available: boolean;
   personal?: boolean;
+  /** Stable personal Skill slug, separate from the prefixed catalog id. */
+  personalSlug?: string;
   /** Kept from the companion's setup but not present on this computer. */
   missing?: boolean;
 };
@@ -60,6 +62,11 @@ export interface BotSettingsTarget {
     load(bot: BotProfile, modelChain: BotModelRoute[], isCurrent: () => boolean): Promise<Partial<Record<BotCapabilityKind, BotCapabilityEntry[]>>>;
     /** Calls `refresh` when the catalog may have changed (runtime, MCP or profile changes). */
     watch(bot: BotProfile, refresh: () => void): () => void;
+    /** Present when the teammate's computer supports viewing and editing learned Skills. */
+    personal?: {
+      read(botId: string, slug: string): Promise<BotSkillDetail | null>;
+      update(botId: string, input: BotSkillUpdateInput): Promise<BotSkillDetail>;
+    };
   };
   /** Messaging platforms: the connections live on the computer that stores their credentials. */
   channels: {

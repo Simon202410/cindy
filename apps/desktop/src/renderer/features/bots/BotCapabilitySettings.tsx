@@ -1,9 +1,11 @@
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
+import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
-import { ChevronDown, Search } from 'lucide-react';
+import { ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { BotPersonalSkillDialog } from './BotPersonalSkillDialog';
 import { useBotTranslation } from './botPronounContext';
 import type { BotCapabilities, BotProfile } from './botStore';
 import type { BotCapabilityEntry as Entry, BotCapabilityKind as Kind } from './botSettingsTarget';
@@ -40,8 +42,11 @@ export function BotCapabilitySettings({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const [query, setQuery] = useState('');
+  const [personalBusy, setPersonalBusy] = useState<string | null>(null);
+  const [personalDetail, setPersonalDetail] = useState<Entry | null>(null);
   const selected = { skill: skills, mcp: capabilities.mcpServers, toolset: capabilities.toolsets };
   const target = useBotSettingsTarget();
+  const personalApi = target.capabilities.personal;
   // Followed defaults can change when providers / available harnesses change, even
   // if the profile still holds the previous modelChain snapshot.
   const defaultChain = target.useDefaultModelChain();
@@ -60,6 +65,24 @@ export function BotCapabilitySettings({
     requestRef.current += 1;
     setRevision((value) => value + 1);
   }, []);
+  const togglePersonal = async (item: Entry, enabled: boolean) => {
+    if (!personalApi || !item.personalSlug || personalBusy) return;
+    const owner = getDataOwnerGeneration();
+    setPersonalBusy(item.id);
+    try {
+      await personalApi.update(bot.id, {
+        slug: item.personalSlug,
+        enabled,
+      });
+      if (isDataOwnerGenerationCurrent(owner)) refresh();
+    } catch {
+      if (isDataOwnerGenerationCurrent(owner)) {
+        toast.error(t('bots.capabilities.personalSkill.toggleFailed', { name: item.name }));
+      }
+    } finally {
+      if (isDataOwnerGenerationCurrent(owner)) setPersonalBusy(null);
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -178,19 +201,39 @@ export function BotCapabilitySettings({
               <div className="divide-y divide-[var(--border-default)]">
                 {matching.map(item => {
                   const checked = item.personal ? item.available : selectedIds.includes(item.id);
+                  const canOpenPersonal = !!personalApi && !!item.personalSlug;
+                  const content = <>
+                    <span className="flex items-center gap-1 text-13 font-medium text-[var(--text-primary)]">
+                      <span>{item.name}</span>
+                      {item.personal && canOpenPersonal ? <ChevronRight size={13} aria-hidden className="text-[var(--text-tertiary)]" /> : null}
+                    </span>
+                    {item.description && <span className="mt-1 block text-12 leading-5 text-[var(--text-secondary)]">{item.description}</span>}
+                    {item.personal && <span className="mt-1 block text-12 text-[var(--text-secondary)]">{t(canOpenPersonal ? 'bots.capabilities.personalHint' : 'bots.capabilities.personalUnsupportedHint')}</span>}
+                    {!item.available && <span className="mt-1 block text-12 leading-5 text-[var(--text-secondary)]">{t(item.missing ? 'bots.capabilities.notOnThisComputer' : 'bots.capabilities.unavailableHint')}</span>}
+                    {kind === 'toolset' && onConfigure && <span className="mt-2 block">
+                      <Button type="button" size="sm" variant="secondary"
+                        onClick={() => onConfigure(kind, item.id)}>{t('bots.capabilities.configure')}</Button>
+                    </span>}
+                  </>;
                   return <div key={item.id} className="flex items-start gap-3 py-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-13 font-medium text-[var(--text-primary)]">{item.name}</p>
-                      {item.description && <p className="mt-1 text-12 leading-5 text-[var(--text-secondary)]">{item.description}</p>}
-                      {item.personal && <p className="mt-1 text-12 text-[var(--text-secondary)]">{t('bots.capabilities.personalHint')}</p>}
-                      {!item.available && <p className="mt-1 text-12 leading-5 text-[var(--text-secondary)]">{t(item.missing ? 'bots.capabilities.notOnThisComputer' : 'bots.capabilities.unavailableHint')}</p>}
-                      {kind === 'toolset' && onConfigure && <Button type="button" size="sm" variant="secondary" className="mt-2"
-                        onClick={() => onConfigure(kind, item.id)}>{t('bots.capabilities.configure')}</Button>}
-                    </div>
+                    {item.personal && canOpenPersonal ? (
+                      <button
+                        type="button"
+                        aria-label={t('bots.capabilities.personalSkill.open', { name: item.name })}
+                        className="-m-1 min-w-0 flex-1 rounded-lg p-1 text-left outline-none hover:bg-[var(--surface-hover)] focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
+                        onClick={() => setPersonalDetail(item)}
+                      >
+                        {content}
+                      </button>
+                    ) : <div className="min-w-0 flex-1">{content}</div>}
                     <Switch aria-label={item.name} className="mt-0.5 shrink-0" checked={checked}
-                      disabled={!canEdit || item.personal || (!item.available && !checked)}
-                      onCheckedChange={value => canEdit && onChange(kind, value
-                        ? [...selectedIds, item.id] : selectedIds.filter(id => id !== item.id))} />
+                      disabled={item.personal
+                        ? !canOpenPersonal || personalBusy === item.id
+                        : !canEdit || (!item.available && !checked)}
+                      onCheckedChange={value => item.personal
+                        ? void togglePersonal(item, value)
+                        : canEdit && onChange(kind, value
+                          ? [...selectedIds, item.id] : selectedIds.filter(id => id !== item.id))} />
                   </div>;
                 })}
               </div>
@@ -202,6 +245,15 @@ export function BotCapabilitySettings({
           );
         })}
       </div>
+      {personalDetail && personalApi ? (
+        <BotPersonalSkillDialog
+          botId={bot.id}
+          item={personalDetail}
+          api={personalApi}
+          onOpenChange={open => { if (!open) setPersonalDetail(null); }}
+          onSaved={refresh}
+        />
+      ) : null}
     </details>
   );
 }

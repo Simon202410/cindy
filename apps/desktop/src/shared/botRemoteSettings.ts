@@ -30,6 +30,8 @@ export const BOT_SETTINGS_OPS = [
   'memory.update',
   'memory.delete',
   'capabilities.catalog',
+  'skills.read',
+  'skills.update',
   'autonomy.get',
   'autonomy.set',
   'autonomy.reset',

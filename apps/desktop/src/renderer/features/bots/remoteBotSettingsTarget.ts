@@ -6,7 +6,7 @@ import type { BotAutonomySettingsView } from '../../../shared/botAutonomy';
 import type { BotMemoryDeleteInput, BotMemoryUpdateInput } from '../../../shared/botMemory';
 import type { BotModelRoute } from '../../../shared/botModelChain';
 import type { ConversationSearchResponse } from '../../../shared/conversationSearch';
-import type { BotSkillSummary } from '../../../shared/botSkill';
+import type { BotSkillDetail, BotSkillSummary, BotSkillUpdateInput } from '../../../shared/botSkill';
 import type { BotSettingsOp } from '../../../shared/botRemoteSettings';
 import { createIpcError } from '../../../shared/ipc-errors';
 import { normalizeDbProfile, type BotProfile, type BotProfileUpdatePatch } from './botStore';
@@ -322,7 +322,14 @@ export function createRemoteBotSettingsTarget(input: RemoteBotSettingsInput) {
           (result.entries[kind] ?? []).map(({ id, name, description, available }) => ({ id, name, description, available }));
         return {
           skill: [
-            ...result.personal.map((item) => ({ id: `personal:${item.slug}`, name: item.name, available: item.enabled !== false, personal: true })),
+            ...result.personal.map((item) => ({
+              id: `personal:${item.slug}`,
+              personalSlug: item.slug,
+              name: item.name,
+              description: item.description,
+              available: item.enabled !== false,
+              personal: true,
+            })),
             ...entries('skill'),
           ],
           mcp: entries('mcp'),
@@ -333,6 +340,14 @@ export function createRemoteBotSettingsTarget(input: RemoteBotSettingsInput) {
         catalogWatchers.add(refresh);
         return () => void catalogWatchers.delete(refresh);
       },
+      ...(input.ops.has('skills.read') && input.ops.has('skills.update') ? {
+        personal: {
+          read: (botId: string, slug: string) =>
+            invokeBotSettings<BotSkillDetail | null>(deviceId, 'skills.read', botId, { slug }),
+          update: (botId: string, input: BotSkillUpdateInput) =>
+            invokeBotSettings<BotSkillDetail>(deviceId, 'skills.update', botId, { ...input }),
+        },
+      } : {}),
     },
     channels: {
       im: input.ops.has('channels.im.list') ? im : null,

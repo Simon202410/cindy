@@ -24,3 +24,13 @@ export interface BotSkillSummary {
 export interface BotSkillDetail extends BotSkillSummary {
   body: string;
 }
+
+/** Partial edit from the settings page; omitted fields keep their stored value. */
+export interface BotSkillUpdateInput {
+  slug: string;
+  name?: string;
+  description?: string;
+  body?: string;
+  enabled?: boolean;
+  expectedUpdatedAt?: string;
+}
