@@ -10,7 +10,6 @@ import type { TodoPatch } from '@cindy/maker-shared/teammate-todo';
  */
 import {
   listBotSkillsForBot,
-  readBotSkillForBot,
 } from '../../maker-ipc/botSkillService.js';
 import { provisionDefaultBot } from '../../maker-ipc/botDefaultProvisioning.js';
 import { BOT_TEMPLATE_PRESET_AVATARS, CINDY_DEFAULT_IDENTITY } from '../../../shared/botTemplatePreset.js';
@@ -3075,19 +3074,6 @@ export function registerBotIpc(): void {
     const skills = await listBotSkillsForBot(botId);
     owner.assertCurrent();
     return skills;
-  });
-  ipcMain.handle('local-db:bots:skills:read', async (event, rawBotId: unknown, rawSlug: unknown) => {
-    assertTrustedAppRendererEvent(event);
-    const botId = readText(rawBotId, 'botId', 128, true);
-    const slug = readText(rawSlug, 'slug', 64, true);
-    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(slug)) throwIpcError('INVALID_PARAMS', 'Invalid skill slug');
-    const owner = captureBotOperationOwner();
-    await getBotRemoteSettingsSource(botId);
-    owner.assertCurrent();
-    const skill = await readBotSkillForBot(botId, slug);
-    owner.assertCurrent();
-    if (!skill) throwIpcError('NOT_FOUND', 'Skill unavailable');
-    return skill;
   });
   ipcMain.handle('local-db:bots:memory:list', async (event, rawBotId: unknown, rawQuery: unknown) => {
     assertTrustedAppRendererEvent(event);
