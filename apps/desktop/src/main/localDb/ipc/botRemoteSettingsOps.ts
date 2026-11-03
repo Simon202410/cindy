@@ -16,8 +16,8 @@ import {
 import type { BotModelRoute } from '../../../shared/botModelChain.js';
 import type { BotLifecycleActionRequest } from '../../../shared/botLifecycle.js';
 import type { BotMemoryDeleteInput, BotMemoryUpdateInput } from '../../../shared/botMemory.js';
-import type { BotSkillDetail, BotSkillSummary, BotSkillUpdateInput } from '../../../shared/botSkill.js';
-import { parseRoutineInput, type Routine, type RoutineRun, type RoutineSource } from '@cindy/maker-scheduler';
+import type { BotCoreSkill, BotSkillDetail, BotSkillSaveInput, BotSkillSummary } from '../../../shared/botSkill.js';
+import { parseRoutineInput, type Routine, type RoutineRun, type RoutineSource, type RoutineDeliveryTarget } from '@cindy/maker-scheduler';
 import { throwIpcError } from '../../utils/ipcValidate.js';
 import type { BotSettingsCall, BotSettingsOpHandler } from './botRemoteSettingsHost.js';
 
@@ -48,8 +48,14 @@ export interface BotSettingsOpsDeps {
   canonicalSessionId(botId: string): Promise<string | null>;
   capabilities(callerSessionId: string, kind: Kind): Promise<BotCapabilityCatalogEntry[]>;
   personalSkills(botId: string): Promise<BotSkillSummary[]>;
-  personalSkill(botId: string, slug: string): Promise<BotSkillDetail | null>;
-  updatePersonalSkill(botId: string, input: BotSkillUpdateInput): Promise<BotSkillDetail>;
+  /** Core text and learned Skill actions (shared with the local capability page). */
+  skills: {
+    core(): BotCoreSkill;
+    read(botId: string, slug: string): Promise<BotSkillDetail | null>;
+    save(botId: string, input: BotSkillSaveInput): Promise<void>;
+    setEnabled(botId: string, slug: string, enabled: boolean): Promise<void>;
+    delete(botId: string, slug: string): Promise<void>;
+  };
   autonomy: {
     get(): Promise<BotAutonomySettingsView>;
     set(schedulerBotId: string | null): Promise<BotAutonomySettingsView>;
@@ -94,6 +100,7 @@ export interface BotSettingsOpsDeps {
   routines: {
     list(botId: string): Promise<Routine[]>;
     sources(): Promise<RoutineSource[]>;
+    deliveryTargets?(botId: string): Promise<RoutineDeliveryTarget[]>;
     history(botId: string, id: string): Promise<RoutineRun[]>;
     save(botId: string, input: ReturnType<typeof parseRoutineInput>, id?: string): Promise<Routine>;
     runNow(botId: string, id: string): Promise<unknown>;
@@ -128,12 +135,12 @@ export function projectBotSettingsProfile(raw: unknown): Record<string, unknown>
 }
 
 /** Whitelist of what an autosave may write; raising permissions stays in the confirmed generic form. */
-export function readBotSettingsPatch(value: unknown): Record<string, unknown> {
+export function readBotSettingsPatch(value: unknown, allowEmpty = false): Record<string, unknown> {
   const patch = record(value, 'patch');
   keysWithin(patch, BOT_SETTINGS_PATCH_FIELDS, 'patch');
   if (patch.capabilities !== undefined) keysWithin(record(patch.capabilities, 'capabilities'), BOT_SETTINGS_CAPABILITY_FIELDS, 'capabilities');
   if (patch.capabilityBaseline !== undefined) record(patch.capabilityBaseline, 'capabilityBaseline');
-  if (!Object.keys(patch).length) fail('patch is empty');
+  if (!allowEmpty && !Object.keys(patch).length) fail('patch is empty');
   return patch;
 }
 
@@ -183,6 +190,14 @@ export function createBotRemoteSettingsOps(deps: BotSettingsOpsDeps): Partial<Re
       const patch = readBotSettingsPatch(call.args.patch);
       return { profile: projectBotSettingsProfile(await deps.updateProfile({ id: botId, ...patch })) };
     },
+    'profile.acceptModelSelection': async call => {
+      const patch = readBotSettingsPatch(call.args.patch, true);
+      const version = call.args.expectedVersion;
+      if (!Number.isSafeInteger(version) || (version as number) < 1) fail('Invalid profile version');
+      return { profile: projectBotSettingsProfile(await deps.updateProfile({
+        id: botOf(call), ...patch, acceptSavedModelSelectionVersion: version,
+      })) };
+    },
     'profile.chooseAvatar': async call => ({
       profile: projectBotSettingsProfile(await deps.setAvatar(botOf(call), text(call.args.avatarImageBase64, 'avatarImageBase64', 80_000))),
     }),
@@ -222,33 +237,29 @@ export function createBotRemoteSettingsOps(deps: BotSettingsOpsDeps): Partial<Re
       const entries = await Promise.all(KINDS.map(async kind => [kind, await deps.capabilities(callerSessionId, kind)] as const));
       return { personal, entries: Object.fromEntries(entries) };
     },
-    'skills.read': async call => {
-      const slug = text(call.args.slug, 'slug', 64);
-      if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(slug)) fail('Invalid skill slug');
-      const skill = await deps.personalSkill(botOf(call), slug);
-      return skill ?? throwIpcError('NOT_FOUND', 'Skill unavailable');
+    'skills.core': async call => {
+      botOf(call);
+      return deps.skills.core();
     },
-    'skills.update': async call => {
-      const input = record(call.args, 'skill');
-      keysWithin(input, ['slug', 'name', 'description', 'body', 'enabled', 'expectedUpdatedAt'], 'skill');
-      const slug = text(input.slug, 'slug', 64);
-      if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(slug)) fail('Invalid skill slug');
-      const update: BotSkillUpdateInput = {
-        slug,
-        ...(input.name !== undefined ? { name: text(input.name, 'name', 64) } : {}),
-        ...(input.description !== undefined ? { description: text(input.description, 'description', 280) } : {}),
-        ...(input.body !== undefined ? { body: text(input.body, 'body', 55_000) } : {}),
-        ...(input.enabled !== undefined ? {
-          enabled: typeof input.enabled === 'boolean' ? input.enabled : fail('enabled is invalid'),
-        } : {}),
-        ...(input.expectedUpdatedAt !== undefined
-          ? { expectedUpdatedAt: text(input.expectedUpdatedAt, 'expectedUpdatedAt', 64) }
-          : {}),
-      };
-      if (!('name' in update || 'description' in update || 'body' in update || 'enabled' in update)) {
-        fail('Skill update is empty');
-      }
-      return deps.updatePersonalSkill(botOf(call), update);
+    'skills.read': async call => deps.skills.read(botOf(call), text(call.args.slug, 'slug', 128)),
+    'skills.save': async call => {
+      await deps.skills.save(botOf(call), {
+        slug: text(call.args.slug, 'slug', 128),
+        name: text(call.args.name, 'name', 64),
+        description: text(call.args.description, 'description', 280),
+        body: text(call.args.body, 'body', 64 * 1024),
+        ...(call.args.expectedUpdatedAt === undefined ? {} : { expectedUpdatedAt: text(call.args.expectedUpdatedAt, 'expectedUpdatedAt', 64, true) }),
+      });
+      return null;
+    },
+    'skills.setEnabled': async call => {
+      if (typeof call.args.enabled !== 'boolean') fail('enabled must be a boolean');
+      await deps.skills.setEnabled(botOf(call), text(call.args.slug, 'slug', 128), call.args.enabled as boolean);
+      return null;
+    },
+    'skills.delete': async call => {
+      await deps.skills.delete(botOf(call), text(call.args.slug, 'slug', 128));
+      return null;
     },
     'autonomy.get': async () => deps.autonomy.get(),
     'autonomy.set': async call => {
@@ -270,6 +281,11 @@ export function createBotRemoteSettingsOps(deps: BotSettingsOpsDeps): Partial<Re
     }),
     // Advertised separately: older hosts accept `saveWithModel` but drop `sessionMode`.
     'routines.saveWithSessionMode': call => routineCall(() => {
+      const id = call.args.id === undefined ? undefined : text(call.args.id, 'id', 128);
+      return deps.routines.save(botOf(call), parseRoutineInput(call.args.input), id);
+    }),
+    'routines.deliveryTargets': call => routineCall(() => deps.routines.deliveryTargets?.(botOf(call)) ?? Promise.resolve([])),
+    'routines.saveWithDelivery': call => routineCall(() => {
       const id = call.args.id === undefined ? undefined : text(call.args.id, 'id', 128);
       return deps.routines.save(botOf(call), parseRoutineInput(call.args.input), id);
     }),

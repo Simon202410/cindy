@@ -46,8 +46,6 @@ function setup(overrides: { allowed?: boolean; visible?: boolean; ownerCurrent?:
     canonicalSessionId: vi.fn(async () => 'main'),
     capabilities: vi.fn(async () => []),
     personalSkills: vi.fn(async () => []),
-    personalSkill: vi.fn(async () => null),
-    updatePersonalSkill: vi.fn(async () => ({ slug: 'brief', name: 'Brief', description: 'd', updatedAt: '1', body: 'b' })),
     autonomy: { get: vi.fn(), set: vi.fn(), reset: vi.fn() },
     searchHistory: vi.fn(async () => ({ results: [] })),
     channels: {
@@ -133,6 +131,18 @@ it('writes only the fields the settings pages edit, and never a permission chang
   for (const patch of [{ capabilities: { permissions: 'trusted' } }, { hidden: true }, { enabled: false }, {}, 'x']) {
     expect(await call('profile.update', { patch })).toMatchObject({ ok: false, code: 'INVALID_PARAMS' });
   }
+  expect(deps.updateProfile).toHaveBeenCalledTimes(1);
+});
+
+it('accepts the unchanged model through the versioned selection operation, leaving ordinary updates unchanged', async () => {
+  const { deps, call } = setup();
+  expect(await call('profile.acceptModelSelection', { patch: {}, expectedVersion: 3 })).toMatchObject({ ok: true });
+  expect(deps.updateProfile).toHaveBeenCalledWith({ id: 'bot-1', acceptSavedModelSelectionVersion: 3 });
+  for (const expectedVersion of [undefined, 0, -1, 1.5, '3']) {
+    expect(await call('profile.acceptModelSelection', { patch: {}, expectedVersion })).toMatchObject({ ok: false, code: 'INVALID_PARAMS' });
+  }
+  expect(await call('profile.acceptModelSelection', { patch: { capabilities: { permissions: 'trusted' } }, expectedVersion: 3 }))
+    .toMatchObject({ ok: false, code: 'INVALID_PARAMS' });
   expect(deps.updateProfile).toHaveBeenCalledTimes(1);
 });
 

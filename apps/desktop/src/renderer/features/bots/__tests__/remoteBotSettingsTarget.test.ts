@@ -31,7 +31,6 @@ const refused = (code: string, message: string) => ({ result: { ok: false, code,
 const sent = (call = 0) => host.invoke.mock.calls[call][2][0] as { input: { op: BotSettingsOp; args?: Record<string, unknown> }; resourceRef?: { id: string } };
 const ALL_OPS = ['caps', 'profile.get', 'profile.update', 'profile.chooseAvatar', 'profile.retryInvitation', 'lifecycle.run', 'models.default',
   'memory.list', 'memory.read', 'memory.update', 'memory.delete', 'capabilities.catalog', 'autonomy.get', 'autonomy.set', 'autonomy.reset', 'history.search',
-  'skills.read', 'skills.update',
   'routines.list', 'routines.sources', 'routines.history', 'routines.save', 'routines.runNow', 'routines.remove',
   'voice.models', 'voice.voices', 'voice.preference', 'voice.setPreference',
   'channels.im.list', 'channels.im.remove', 'channels.wechat.get', 'channels.x.get'] as BotSettingsOp[];
@@ -55,6 +54,49 @@ it('applies the host profile after an autosave and sends only what changed', asy
   expect(sent(1)).toMatchObject({ resourceRef: { id: 'bot-1' }, input: { op: 'profile.update', args: { patch: { description: 'Designer', capabilities: { memory: false } } } } });
   expect(next.description).toBe('Designer');
   expect(profiles.get()?.description).toBe('Designer');
+});
+
+it('accepts a same-model choice once through a host that declares the operation', async () => {
+  const { target, profiles } = create([...ALL_OPS, 'profile.acceptModelSelection']);
+  host.invoke.mockResolvedValueOnce(ok({ profile: profile() }));
+  await profiles.load();
+  host.invoke.mockResolvedValueOnce(ok({ profile: profile({ currentVersion: 2 }) }));
+  await target.profile.update('bot-1', { acceptModelSelection: true });
+  expect(sent(1).input).toEqual({ v: 1, op: 'profile.acceptModelSelection', args: { patch: {}, expectedVersion: 1 } });
+  expect(profiles.get()).not.toHaveProperty('acceptModelSelection');
+});
+
+it('rereads a version conflict even when a concurrent refresh was discarded during the first save', async () => {
+  const { target, profiles } = create([...ALL_OPS, 'profile.acceptModelSelection']);
+  host.invoke.mockResolvedValueOnce(ok({ profile: profile() }));
+  await profiles.load();
+  let finish!: (result: unknown) => void;
+  host.invoke.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  const saving = target.profile.update('bot-1', { acceptModelSelection: true });
+  host.invoke.mockResolvedValueOnce(ok({ profile: profile({ currentVersion: 2 }) }));
+  await profiles.refresh();
+  expect(profiles.get()?.currentVersion).toBe(1);
+  host.invoke.mockResolvedValueOnce(ok({ profile: profile({ currentVersion: 2 }) }));
+  finish(refused('PRECONDITION_FAILED', 'Profile changed'));
+  await expect(saving).rejects.toSatisfy(error => extractIpcError(error)?.code === 'PRECONDITION_FAILED');
+  expect(profiles.get()?.currentVersion).toBe(2);
+  host.invoke.mockResolvedValueOnce(ok({ profile: profile({ currentVersion: 3 }) }));
+  await target.profile.update('bot-1', { acceptModelSelection: true });
+  expect(sent(4).input).toMatchObject({ op: 'profile.acceptModelSelection', args: { expectedVersion: 2 } });
+});
+
+it('keeps actual model changes usable on older hosts but refuses unsupported same-model acceptance', async () => {
+  const { target, profiles } = create();
+  host.invoke.mockResolvedValueOnce(ok({ profile: profile() }));
+  await profiles.load();
+  await expect(target.profile.update('bot-1', { acceptModelSelection: true }))
+    .rejects.toSatisfy(error => extractIpcError(error)?.code === 'UNSUPPORTED_CAPABILITY');
+  expect(host.invoke).toHaveBeenCalledTimes(1);
+  const chain = [{ harness: 'pi' as const, model: 'changed', providerId: null, effort: '', fastMode: false }];
+  host.invoke.mockResolvedValueOnce(ok({ profile: profile({ currentVersion: 2 }) }));
+  await target.profile.update('bot-1', { acceptModelSelection: true, capabilities: { modelChain: chain, modelChainOverride: chain } });
+  expect(sent(1).input.op).toBe('profile.update');
+  expect(sent(1).input.args?.patch).not.toHaveProperty('acceptModelSelection');
 });
 
 it('rolls an optimistic write back and rejects with the host error when the host refuses it', async () => {
@@ -114,30 +156,11 @@ it('builds the capability lists from the host catalog without the fixed baseline
   }));
   const catalog = await target.capabilities.load({ id: 'bot-1' } as never, [], () => true);
   expect(catalog.skill).toEqual([
-    { id: 'personal:brief', personalSlug: 'brief', name: 'Brief', description: '', available: false, personal: true },
+    { id: 'personal:brief', name: 'Brief', available: false, personal: true },
     { id: 'review', name: 'review', description: 'Review', available: true },
   ]);
   expect(catalog.mcp).toEqual([{ id: 'm1', name: 'Docs', description: 'http', available: false }]);
   expect(catalog.toolset?.map((item) => item.id)).toEqual(['browser']);
-});
-
-it('reads, edits and toggles a learned Skill through the host that declares the operations', async () => {
-  const { target } = create();
-  expect(target.capabilities.personal).toBeDefined();
-  const detail = { slug: 'brief', name: 'Brief', description: 'How', updatedAt: '1', body: 'Body' };
-  host.invoke.mockResolvedValueOnce(ok(detail));
-  await expect(target.capabilities.personal!.read('bot-1', 'brief')).resolves.toEqual(detail);
-  expect(sent()).toMatchObject({ resourceRef: { id: 'bot-1' }, input: { op: 'skills.read', args: { slug: 'brief' } } });
-
-  host.invoke.mockResolvedValueOnce(ok({ ...detail, enabled: false }));
-  await target.capabilities.personal!.update('bot-1', { slug: 'brief', enabled: false });
-  expect(sent(1)).toMatchObject({
-    resourceRef: { id: 'bot-1' },
-    input: { op: 'skills.update', args: { slug: 'brief', enabled: false } },
-  });
-
-  const older = create(ALL_OPS.filter(op => op !== 'skills.read' && op !== 'skills.update'));
-  expect(older.target.capabilities.personal).toBeUndefined();
 });
 
 it('does not re-read a deleted teammate after the lifecycle action', async () => {
@@ -212,4 +235,17 @@ it('starts again from the host profile, not from the old one, when a later part 
     .rejects.toSatisfy((error) => extractIpcError(error)?.code === 'INTERNAL');
   expect(sent(4)).toMatchObject({ input: { op: 'profile.get' } });
   expect(profiles.get()).toMatchObject({ avatarColor: 'blue', identitySource: long, userContextSource: '' });
+});
+
+it('negotiates final delivery and discovers recipients on the teammate computer', async () => {
+  const older = create();
+  expect(older.target.routineDelivery).toBe(false);
+  expect(await older.target.routines.deliveryTargets?.('bot-1')).toEqual([]);
+  const current = create([...ALL_OPS, 'routines.saveWithDelivery', 'routines.deliveryTargets']);
+  host.invoke.mockResolvedValue(ok([]));
+  const delivery = { kind: 'im', targetId: 'host-destination' };
+  await current.target.routines.save('bot-1', { name: 'Digest', delivery } as never, 'r1');
+  expect(sent()).toMatchObject({ resourceRef: { id: 'bot-1' }, input: { op: 'routines.saveWithDelivery', args: { input: { delivery } } } });
+  await current.target.routines.deliveryTargets?.('bot-1');
+  expect(sent(1)).toMatchObject({ resourceRef: { id: 'bot-1' }, input: { op: 'routines.deliveryTargets' } });
 });

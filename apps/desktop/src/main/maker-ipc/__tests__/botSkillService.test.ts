@@ -18,7 +18,6 @@ import {
   listBotSkillsForSession,
   readBotSkillForBot,
   saveBotSkillForSession,
-  updateBotSkillForSession,
 } from '../botSkillService';
 import {
   beginChannelToolScope,
@@ -167,8 +166,10 @@ describe('设置页与会话挂载读的是同一份磁盘事实', () => {
     expect(cindy.baseline.skill.name).toBe('teammate-guide');
     expect(cindy.baseline.pluginRoot).not.toContain('bot-cindy');
     const source = await fs.readFile(fresh.baseline.skill.filePath, 'utf8');
-    for (const tool of ['start_session_task', 'send_to_agent', 'create_teammate', 'get_app_default_model', 'set_app_default_model', 'save_teammate_skill', 'ghost_call', 'routine_list', 'schedule_set_pre_run_hook', 'schedule_notify_current_run'])
+    // The mounted core mirrors the preloaded one: orchestration plus the read_teammate_skill index.
+    for (const tool of ['send_to_agent', 'get_app_default_model', 'update_teammate_profile', 'set_teammate_capability', 'ghost_list', 'read_teammate_skill'])
       expect(source).toContain(tool);
+    expect(source).not.toContain('routine_list');
     expect(cindy.skills).toEqual([]);
     expect(fresh.skills).toEqual([]);
     await saveBotSkillForSession(SAVE, depsFor('bot-fresh'));
@@ -202,39 +203,6 @@ describe('设置页与会话挂载读的是同一份磁盘事实', () => {
   it('returns nothing to mount for a Bot that never learned anything', async () => {
     const mounts = await collectBotOwnSkillMounts('bot-fresh', { userDataDir });
     expect(mounts.skills).toEqual([]);
-  });
-});
-
-describe('设置页编辑与开关', () => {
-  it('moves a learned Skill out of the runtime without losing its content, and keeps it off after edits', async () => {
-    const requestRefresh = vi.fn(async () => true);
-    const deps = { ...depsFor('bot-1'), requestRefresh };
-    await saveBotSkillForSession(SAVE, deps);
-    requestRefresh.mockClear();
-
-    const disabled = await updateBotSkillForSession(
-      { callerSessionId: 'session-1', slug: 'weekly-report', enabled: false },
-      deps,
-    );
-    expect(disabled).toMatchObject({ ok: true, skill: { enabled: false, body: SAVE.body } });
-    expect(await listBotSkillsForBot('bot-1', { userDataDir })).toMatchObject([
-      { slug: 'weekly-report', enabled: false },
-    ]);
-
-    const edited = await updateBotSkillForSession(
-      { callerSessionId: 'session-1', slug: 'weekly-report', body: 'Updated body' },
-      deps,
-    );
-    expect(edited).toMatchObject({ ok: true, skill: { enabled: false, body: 'Updated body' } });
-    expect(requestRefresh).toHaveBeenCalledTimes(2);
-  });
-
-  it('refuses a stale detail edit instead of overwriting a newer Skill', async () => {
-    await saveBotSkillForSession(SAVE, depsFor('bot-1'));
-    expect(await updateBotSkillForSession(
-      { callerSessionId: 'session-1', slug: 'weekly-report', body: 'stale', expectedUpdatedAt: 'old' },
-      depsFor('bot-1'),
-    )).toMatchObject({ ok: false, errorCode: 'INVALID_ARGS' });
   });
 });
 

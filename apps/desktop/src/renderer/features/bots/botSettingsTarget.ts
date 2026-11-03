@@ -5,7 +5,7 @@ import type { BotAutonomySettingsView } from '../../../shared/botAutonomy';
 import type { BotLifecycleActionRequest, BotLifecycleActionResult } from '../../../shared/botLifecycle';
 import type { BotModelRoute } from '../../../shared/botModelChain';
 import type { ConversationSearchResponse } from '../../../shared/conversationSearch';
-import type { BotSkillDetail, BotSkillSummary, BotSkillUpdateInput } from '../../../shared/botSkill';
+import type { BotSkillSummary } from '../../../shared/botSkill';
 import type { BotProfile, BotProfileUpdatePatch } from './botStore';
 
 export type BotCapabilityKind = 'skill' | 'mcp' | 'toolset';
@@ -15,8 +15,6 @@ export type BotCapabilityEntry = {
   description?: string;
   available: boolean;
   personal?: boolean;
-  /** Stable personal Skill slug, separate from the prefixed catalog id. */
-  personalSlug?: string;
   /** Kept from the companion's setup but not present on this computer. */
   missing?: boolean;
 };
@@ -56,17 +54,14 @@ export interface BotSettingsTarget {
   /** Teammates on the same computer: name uniqueness and the follow-up holder's name. */
   useRoster(): ReadonlyArray<{ id: string; name: string; status?: string }>;
   memory: Bots['memory'];
+  /** Core text and learned Skill actions; null when the teammate's computer is too old to offer them. */
+  skills: Bots['skills'] | null;
   history: { search(body: { botId: string; query: string; limit: number }): Promise<ConversationSearchResponse> };
   capabilities: {
     /** `isCurrent` turns false once a newer load superseded this one, so it can stop before its next request. */
     load(bot: BotProfile, modelChain: BotModelRoute[], isCurrent: () => boolean): Promise<Partial<Record<BotCapabilityKind, BotCapabilityEntry[]>>>;
     /** Calls `refresh` when the catalog may have changed (runtime, MCP or profile changes). */
     watch(bot: BotProfile, refresh: () => void): () => void;
-    /** Present when the teammate's computer supports viewing and editing learned Skills. */
-    personal?: {
-      read(botId: string, slug: string): Promise<BotSkillDetail | null>;
-      update(botId: string, input: BotSkillUpdateInput): Promise<BotSkillDetail>;
-    };
   };
   /** Messaging platforms: the connections live on the computer that stores their credentials. */
   channels: {
@@ -93,6 +88,7 @@ export interface BotSettingsTarget {
   routineModels?: boolean;
   /** Host keeps a routine's session mode (persistent lane or a fresh lane per trigger). */
   routineSessionModes?: boolean;
+  routineDelivery?: boolean;
   autonomy: {
     useSettings(): BotAutonomySettingsView | null;
     setSchedulerBotId(botId: string | null): Promise<void>;

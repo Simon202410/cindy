@@ -27,14 +27,18 @@ import {
   readBotSkill,
   readBotSkillSource,
   listBotSkillSources,
+  applyBotSkillFiles,
+  listBotSkillFiles,
+  readBotSkillFiles,
   saveBotSkill,
   saveBotSkillSource,
+  setBotSkillEnabled,
   type BotSkillSummary,
 } from './botSkillStore.js';
+import type { BotSkillFile, LocalBotSkillFile } from './botSkillFiles.js';
 import type {
   BotSkillDetail,
   BotSkillSummary as SharedBotSkillSummary,
-  BotSkillUpdateInput,
 } from '../../shared/botSkill.js';
 import { getDbClient } from '../localDb/client/current.js';
 import { botProfiles, botSessionLinks, sessions } from '../localDb/schema.js';
@@ -272,66 +276,6 @@ export async function saveBotSkillForSession(
   }
 }
 
-/**
- * Settings-page edit or mount toggle. Content edits preserve the current
- * enabled state; toggling moves the whole Skill folder without deleting files.
- */
-export async function updateBotSkillForSession(
-  params: { callerSessionId: string; callerSessionInstanceId?: string } & BotSkillUpdateInput,
-  deps: BotSkillServiceDeps = {},
-): Promise<BotSkillResult<{ skill: BotSkillDetail }>> {
-  try {
-    const boundary = captureOwnerBoundary(deps);
-    const owner = await (deps.resolveBotId
-      ?? ((id, instanceId) => defaultResolveBotId(id, false, instanceId)))(
-      params.callerSessionId, params.callerSessionInstanceId,
-    );
-    if (!owner.ok) return owner;
-    assertOwnerBoundary(deps, boundary);
-    const home = await skillHomeOf(deps, owner.botId, boundary);
-    const current = await readBotSkill(home, owner.botId, params.slug);
-    if (!current) return { ok: false, errorCode: 'NOT_FOUND', message: 'Skill not found' };
-    if (params.expectedUpdatedAt !== undefined && current.updatedAt !== params.expectedUpdatedAt) {
-      return { ok: false, errorCode: 'INVALID_ARGS', message: 'Skill changed during review' };
-    }
-
-    if (params.name !== undefined || params.description !== undefined || params.body !== undefined) {
-      await saveBotSkill(home, owner.botId, {
-        slug: current.slug,
-        name: params.name ?? current.name,
-        description: params.description ?? current.description,
-        body: params.body ?? current.body,
-        expectedUpdatedAt: current.updatedAt,
-      });
-    }
-    const currentlyEnabled = current.enabled !== false;
-    if (params.enabled !== undefined && params.enabled !== currentlyEnabled) {
-      const source = await readBotSkillSource(home, owner.botId, current.slug);
-      if (!source) return { ok: false, errorCode: 'NOT_FOUND', message: 'Skill not found' };
-      await saveBotSkillSource(home, owner.botId, current.slug, source, { enabled: params.enabled });
-    }
-
-    const updated = await readBotSkill(home, owner.botId, current.slug);
-    if (!updated) return { ok: false, errorCode: 'NOT_FOUND', message: 'Skill not found' };
-    assertOwnerBoundary(deps, boundary);
-    await (deps.requestRefresh ?? requestBotRuntimeEpochRefresh)(owner.canonicalSessionId ?? params.callerSessionId, 'resource');
-    assertOwnerBoundary(deps, boundary);
-    return {
-      ok: true,
-      skill: {
-        slug: updated.slug,
-        name: updated.name,
-        description: updated.description,
-        updatedAt: updated.updatedAt,
-        body: updated.body,
-        ...(updated.enabled === false ? { enabled: false } : {}),
-      },
-    };
-  } catch (cause) {
-    return storeError(cause);
-  }
-}
-
 /** 列出这个伙伴已经学会的技能,供模型避免重复学 / 决定该更新哪一条。 */
 export async function listBotSkillsForSession(
   params: { callerSessionId: string; callerSessionInstanceId?: string; query?: string; offset?: number; limit?: number },
@@ -384,6 +328,7 @@ export async function readBotSkillForBot(
         description: record.description,
         updatedAt: record.updatedAt,
         body: record.body,
+        ...(record.enabled === false ? { enabled: false } : {}),
       }
     : null;
 }
@@ -406,9 +351,41 @@ export async function listBotSkillSourcesForBot(botId: string, deps: BotSkillSer
 
 /** Restore one own skill's SKILL.md verbatim (cloud companions), keeping its native frontmatter. */
 export async function saveBotSkillSourceForBot(botId: string, slug: string, source: string,
-  options: { enabled?: boolean } = {}, deps: BotSkillServiceDeps = {}): Promise<void> {
+  options: { enabled?: boolean; expectedUpdatedAt?: string } = {}, deps: BotSkillServiceDeps = {}): Promise<void> {
   const boundary = captureOwnerBoundary(deps);
   await saveBotSkillSource(await skillHomeOf(deps, botId, boundary), botId, slug, source, options);
+  assertOwnerBoundary(deps, boundary);
+}
+
+/** The files beside one own skill's SKILL.md (cloud companions). */
+export async function listBotSkillFilesForBot(botId: string, slug: string, enabled: boolean, deps: BotSkillServiceDeps = {}): Promise<LocalBotSkillFile[]> {
+  const boundary = captureOwnerBoundary(deps);
+  const files = await listBotSkillFiles(await skillHomeOf(deps, botId, boundary), botId, slug, enabled);
+  assertOwnerBoundary(deps, boundary);
+  return files;
+}
+
+/** The same, wherever the skill lives now. */
+export async function readBotSkillFilesForBot(botId: string, slug: string, deps: BotSkillServiceDeps = {}): Promise<LocalBotSkillFile[]> {
+  const boundary = captureOwnerBoundary(deps);
+  const files = await readBotSkillFiles(await skillHomeOf(deps, botId, boundary), botId, slug);
+  assertOwnerBoundary(deps, boundary);
+  return files;
+}
+
+/** Restore the files beside one own skill's SKILL.md (cloud companions). */
+export async function applyBotSkillFilesForBot(botId: string, slug: string, files: BotSkillFile[],
+  fetch: (file: BotSkillFile) => Promise<string | null>, options: { removeOthers: boolean; keep?: string[] }, deps: BotSkillServiceDeps = {}): Promise<string[]> {
+  const boundary = captureOwnerBoundary(deps);
+  const missing = await applyBotSkillFiles(await skillHomeOf(deps, botId, boundary), botId, slug, files, fetch, options);
+  assertOwnerBoundary(deps, boundary);
+  return missing;
+}
+
+/** 设置页开关一条学会的技能：只移动文件夹，不改内容。 */
+export async function setBotSkillEnabledForBot(botId: string, slug: string, enabled: boolean, deps: BotSkillServiceDeps = {}): Promise<void> {
+  const boundary = captureOwnerBoundary(deps);
+  await setBotSkillEnabled(await skillHomeOf(deps, botId, boundary), botId, slug, enabled);
   assertOwnerBoundary(deps, boundary);
 }
 
