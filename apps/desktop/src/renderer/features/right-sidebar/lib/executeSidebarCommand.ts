@@ -49,7 +49,11 @@ export async function executeSidebarCommand(command: RsbWindowCommand): Promise<
     } else if (command.targetKind === 'directory') {
       await openDirInSidebarFileBrowser(command.sessionId, command.relPath);
     } else {
-      await openFileInSidebarFileBrowser(command.sessionId, command.relPath);
+      if (command.line !== undefined) {
+        await openFileInSidebarFileBrowser(command.sessionId, command.relPath, command.line);
+      } else {
+        await openFileInSidebarFileBrowser(command.sessionId, command.relPath);
+      }
     }
     return;
   }

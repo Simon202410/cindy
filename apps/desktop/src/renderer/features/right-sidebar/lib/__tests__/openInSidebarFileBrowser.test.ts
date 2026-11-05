@@ -51,7 +51,10 @@ describe('openInSidebarFileBrowser', () => {
     expect(ensureHydrated).toHaveBeenCalledWith('s1');
     expect(addTab).toHaveBeenCalledWith('s1', 'file-browser', {
       selectedFilePath: 'src/App.tsx',
+      selectedFileLine: null,
+      selectedFileAnchorToChange: true,
       revealFilePath: 'src/App.tsx',
+      revealFileLine: null,
       revealFileNonce: 1,
     });
     expect(requestRightSidebarVisibility).toHaveBeenCalledWith('open', { sessionId: 's1' });
@@ -73,6 +76,7 @@ describe('openInSidebarFileBrowser', () => {
     expect(updater?.({ selectedFilePath: 'old.ts', revealFileNonce: 4 })).toEqual({
       selectedFilePath: 'old.ts',
       revealFilePath: 'src/App.tsx',
+      revealFileLine: null,
       revealFileNonce: 5,
     });
     expect(requestRightSidebarVisibility).toHaveBeenCalledWith('open', { sessionId: 's1' });
@@ -85,6 +89,30 @@ describe('openInSidebarFileBrowser', () => {
       selectedFilePath: null,
       revealDirPath: 'src/components',
       revealDirNonce: 1,
+    });
+  });
+
+  it('carries an explicit line through local and detached opens', async () => {
+    await openFileInSidebarFileBrowser('s1', 'src/App.tsx', 42);
+
+    expect(addTab).toHaveBeenCalledWith('s1', 'file-browser', {
+      selectedFilePath: 'src/App.tsx',
+      selectedFileLine: 42,
+      selectedFileAnchorToChange: false,
+      revealFilePath: 'src/App.tsx',
+      revealFileLine: 42,
+      revealFileNonce: 1,
+    });
+
+    vi.mocked(routeSidebarCommand).mockResolvedValue('routed');
+    await openFileInSidebarFileBrowser('remote-lead', 'src/App.tsx', 42);
+
+    expect(routeSidebarCommand).toHaveBeenLastCalledWith({
+      type: 'open-file-browser',
+      sessionId: 'remote-lead',
+      relPath: 'src/App.tsx',
+      targetKind: 'file',
+      line: 42,
     });
   });
 

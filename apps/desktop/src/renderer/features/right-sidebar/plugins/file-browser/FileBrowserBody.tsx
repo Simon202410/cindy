@@ -106,6 +106,14 @@ import './FileBrowserBody.css';
  *  左栏展开 → RSB pixel 宽按 fraction 缩 → tree 被切看着像"自动折叠")。 */
 const BODY_MIN_RESERVE = 100;
 
+function firstLineInSet(lines: ReadonlySet<number> | undefined): number | null {
+  let first: number | null = null;
+  for (const line of lines ?? []) {
+    if (first === null || line < first) first = line;
+  }
+  return first;
+}
+
 interface FileBrowserBodyProps {
   state: FileBrowserState;
   ctx: TabKindHostContext;
@@ -241,22 +249,27 @@ function FileBrowserBodyWithWorkdir({
       const ok = await confirmSwitchAway(state.selectedFilePath, relPath);
       if (!ok) return;
       setExternalFile(null);
-      ctx.patchState({ selectedFilePath: relPath });
+      ctx.patchState({
+        selectedFilePath: relPath,
+        selectedFileLine: null,
+        selectedFileAnchorToChange: false,
+      });
     },
     [confirmSwitchAway, ctx, state.selectedFilePath],
   );
 
-  // 搜索结果点击 → 切回 tree 模式 + 选中该文件。
-  // RSB 版 plugin state 暂时只持有 selectedFilePath,没有 jumpLine / jumpQuery 字段
-  // (doc 模式靠 URL ?line= 跳行号、?search= 高亮命中),所以这里 lineNumber 暂时丢弃,
-  // 用户能定位到文件已经满足"项目级搜索 → 打开命中文件"主流程。
-  // Phase 后续如果有诉求,可扩展 FileBrowserState 持 jumpLine 字段。
+  // 搜索结果点击 → 切回 tree 模式 + 选中该文件。搜索命中行号仍不跳转:
+  // 聊天文件链接的行锚定走 revealFileLine,这里保持"打开命中文件"主流程。
   const handleOpenMatch = useCallback(
     async (relPath: string) => {
       const ok = await confirmSwitchAway(state.selectedFilePath, relPath);
       if (!ok) return;
       setExternalFile(null);
-      ctx.patchState({ selectedFilePath: relPath });
+      ctx.patchState({
+        selectedFilePath: relPath,
+        selectedFileLine: null,
+        selectedFileAnchorToChange: false,
+      });
       setMode('tree');
     },
     [confirmSwitchAway, ctx, state.selectedFilePath],
@@ -295,6 +308,7 @@ function FileBrowserBodyWithWorkdir({
   // dirty guard,避免用户在当前 RSB 文件里有未保存编辑时被外部右键菜单直接切走。
   const revealFilePath = state.revealFilePath ?? null;
   const revealFileNonce = state.revealFileNonce ?? 0;
+  const revealFileLine = state.revealFileLine ?? null;
   useEffect(() => {
     if (!revealFilePath) return;
     let cancelled = false;
@@ -302,22 +316,26 @@ function FileBrowserBodyWithWorkdir({
       const ok = await confirmSwitchAway(state.selectedFilePath, revealFilePath);
       if (cancelled) return;
       if (!ok) {
-        ctx.patchState({ revealFilePath: null });
+        ctx.patchState({ revealFilePath: null, revealFileLine: null });
         return;
       }
       setMode('tree');
       setFilterQuery('');
       setExternalFile(null);
-      ctx.patchState({ selectedFilePath: revealFilePath });
+      ctx.patchState({
+        selectedFilePath: revealFilePath,
+        selectedFileLine: revealFileLine,
+        selectedFileAnchorToChange: revealFileLine === null,
+      });
       await revealFileInTree(revealFilePath);
       if (cancelled) return;
-      ctx.patchState({ revealFilePath: null });
+      ctx.patchState({ revealFilePath: null, revealFileLine: null });
     })();
     return () => {
       cancelled = true;
     };
     // state/ctx/tree 引用变化不该重放已消费的请求。
-  }, [revealFilePath, revealFileNonce]);
+  }, [revealFilePath, revealFileNonce, revealFileLine]);
 
   // 文件名筛选结果点击 → 选中文件 + 清空 query + 展开父目录 + 滚动到该行
   // (回到正常文件树视图,跟用户直觉一致:"我找到这个文件了,接下来就在看它")。
@@ -328,7 +346,11 @@ function FileBrowserBodyWithWorkdir({
       const ok = await confirmSwitchAway(state.selectedFilePath, relPath);
       if (!ok) return;
       setExternalFile(null);
-      ctx.patchState({ selectedFilePath: relPath });
+      ctx.patchState({
+        selectedFilePath: relPath,
+        selectedFileLine: null,
+        selectedFileAnchorToChange: false,
+      });
       setFilterQuery('');
       // 等 filterQuery 清空 → tree 视图重新可见,然后 reveal 内部再两次 rAF
       // 等 React commit / layout 稳定 → scroll。
@@ -445,7 +467,11 @@ function FileBrowserBodyWithWorkdir({
         setExternalFile(null);
         setMode('tree');
         setFilterQuery('');
-        ctx.patchState({ selectedFilePath: localRelPath });
+        ctx.patchState({
+          selectedFilePath: localRelPath,
+          selectedFileLine: null,
+          selectedFileAnchorToChange: false,
+        });
         void revealFileInTree(localRelPath);
         return;
       }
@@ -461,7 +487,11 @@ function FileBrowserBodyWithWorkdir({
       setMode('tree');
       setFilterQuery('');
       setExternalFile(external);
-      ctx.patchState({ selectedFilePath: null });
+      ctx.patchState({
+        selectedFilePath: null,
+        selectedFileLine: null,
+        selectedFileAnchorToChange: false,
+      });
     },
     [confirmSwitchAway, ctx, isRemote, revealFileInTree, state.selectedFilePath, t, workdir],
   );
@@ -581,6 +611,15 @@ function FileBrowserBodyWithWorkdir({
     !externalFile && state.selectedFilePath
       ? gitChanges.changedLines.get(state.selectedFilePath)
       : undefined;
+  const jumpLine = externalFile
+    ? null
+    : state.selectedFileLine
+      ?? (state.selectedFileAnchorToChange ? firstLineInSet(activeChangedLines) : null);
+  const handleJumpLineConsumed = useCallback(() => {
+    if (state.selectedFileAnchorToChange) {
+      ctx.patchState({ selectedFileAnchorToChange: false });
+    }
+  }, [ctx, state.selectedFileAnchorToChange]);
   useEffect(() => {
     if (!externalFile && activeContent.kind === 'text') gitChanges.scheduleRefresh();
   }, [activeContent, externalFile, gitChanges.scheduleRefresh]);
@@ -636,6 +675,9 @@ function FileBrowserBodyWithWorkdir({
             content={activeContent}
             allowEdit={!externalFile}
             changedLines={activeChangedLines}
+            jumpLine={jumpLine}
+            jumpLineNonce={externalFile ? undefined : state.revealFileNonce}
+            onJumpLineConsumed={handleJumpLineConsumed}
             onSaved={
               externalFile
                 ? undefined

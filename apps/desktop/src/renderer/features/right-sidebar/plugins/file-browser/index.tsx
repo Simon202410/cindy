@@ -32,6 +32,10 @@ const FileBrowserBody = lazy(() =>
 export interface FileBrowserState {
   /** 当前选中的 workdir-relative POSIX 路径;null = 没选(渲染空提示)。 */
   selectedFilePath: string | null;
+  /** 当前文件要锚定的 1-based 行号(来自聊天文件链接的显式行号)。 */
+  selectedFileLine?: number | null;
+  /** 链接没带行号时,打开后锚到该文件的第一个改动行。 */
+  selectedFileAnchorToChange?: boolean;
   /**
    * 一次性目录定位请求(聊天目录 chip → openDirInSidebarFileBrowser 写入):
    * FileBrowserBody 消费后即清空。hydrateState 必须透传(TabBody 渲染前 state
@@ -47,6 +51,8 @@ export interface FileBrowserState {
   revealFilePath?: string | null;
   /** 文件定位请求序号:同一文件重复打开也要重新触发 reveal。 */
   revealFileNonce?: number;
+  /** 文件定位请求携带的 1-based 行号。 */
+  revealFileLine?: number | null;
   /**
    * 一次性外部文件打开请求(聊天文件 chip 右键 → workdir 外本地文件):
    * FileBrowserBody 复用原生文件拖入链路消费，不把绝对路径挂进项目文件树。
@@ -104,6 +110,12 @@ const plugin: TabKindPlugin<FileBrowserState> = {
     const path = obj.selectedFilePath;
     return {
       selectedFilePath: typeof path === 'string' ? path : null,
+      ...(typeof obj.selectedFileLine === 'number' && obj.selectedFileLine > 0
+        ? { selectedFileLine: obj.selectedFileLine }
+        : {}),
+      ...(typeof obj.selectedFileAnchorToChange === 'boolean'
+        ? { selectedFileAnchorToChange: obj.selectedFileAnchorToChange }
+        : {}),
       // 目录定位请求透传(见字段注释);形状不合法按"无请求"。
       ...(typeof obj.revealDirPath === 'string' && obj.revealDirPath
         ? { revealDirPath: obj.revealDirPath }
@@ -113,6 +125,9 @@ const plugin: TabKindPlugin<FileBrowserState> = {
         ? { revealFilePath: obj.revealFilePath }
         : {}),
       ...(typeof obj.revealFileNonce === 'number' ? { revealFileNonce: obj.revealFileNonce } : {}),
+      ...(typeof obj.revealFileLine === 'number' && obj.revealFileLine > 0
+        ? { revealFileLine: obj.revealFileLine }
+        : {}),
       ...(typeof obj.externalFilePath === 'string' && obj.externalFilePath
         ? { externalFilePath: obj.externalFilePath }
         : {}),

@@ -61,12 +61,14 @@ export async function openDirInSidebarFileBrowser(
 export async function openFileInSidebarFileBrowser(
   sessionId: string,
   relFilePath: string,
+  line?: number,
 ): Promise<void> {
   const routeResult = await routeSidebarCommand({
     type: 'open-file-browser',
     sessionId,
     relPath: relFilePath,
     targetKind: 'file',
+    ...(line !== undefined ? { line } : {}),
   });
   if (routeResult !== 'attached') {
     if (routeResult !== 'routed') return;
@@ -87,13 +89,17 @@ export async function openFileInSidebarFileBrowser(
       return {
         ...base,
         revealFilePath: relFilePath,
+        revealFileLine: line ?? null,
         revealFileNonce: nonce + 1,
       };
     });
   } else {
     await addTab(sessionId, 'file-browser', {
       selectedFilePath: relFilePath,
+      selectedFileLine: line ?? null,
+      selectedFileAnchorToChange: line === undefined,
       revealFilePath: relFilePath,
+      revealFileLine: line ?? null,
       revealFileNonce: 1,
     });
   }

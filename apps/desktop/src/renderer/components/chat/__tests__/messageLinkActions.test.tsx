@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   openPath: vi.fn(async () => ({ success: true })),
   writeText: vi.fn(async () => undefined),
   sidebar: vi.fn(async () => undefined),
+  sidebarFile: vi.fn(async () => undefined),
 }));
 vi.mock('react-i18next', async (original) => ({
   ...(await original<typeof import('react-i18next')>()),
@@ -16,14 +17,22 @@ vi.mock('@/features/right-sidebar/lib/openInSidebarBrowser', () => ({
   openUrlInSidebarBrowser: mocks.sidebar,
   pathToFileUrl: (path: string) => `file://${path}`,
 }));
+vi.mock('@/features/right-sidebar/lib/openInSidebarFileBrowser', () => ({
+  openDirInSidebarFileBrowser: vi.fn(async () => undefined),
+  openExternalFileInSidebarFileBrowser: vi.fn(async () => undefined),
+  openFileInSidebarFileBrowser: mocks.sidebarFile,
+}));
 vi.mock('@/lib/toast', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 import { MarkdownRenderer } from '../MarkdownRenderer';
 import { UserMessageImageLink } from '../UserMessageImageLink';
+import { ChatSessionFileProvider } from '../ChatSessionFileContext';
 import { _resetLinkOpenPreferenceForTests } from '@/hooks/useLinkOpenPreference';
+import { _clearSmartResolveCache } from '@/lib/localPathResolver';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  _clearSmartResolveCache();
   localStorage.clear();
   _resetLinkOpenPreferenceForTests();
   Object.defineProperty(window, 'electronAPI', {
@@ -67,6 +76,35 @@ describe('message link entry points', () => {
     );
     await waitFor(() => expect(mocks.writeText).toHaveBeenCalledWith('https://example.com'));
     expect(mocks.openExternal).not.toHaveBeenCalled();
+  });
+
+  it('opens a resolved code link in the sidebar preview at its line', async () => {
+    Object.assign(window.electronAPI, {
+      resolvePathBatch: vi.fn(async ({ hrefs }: { hrefs: string[] }) =>
+        Object.fromEntries(
+          hrefs.map((href) => [href, {
+            status: 'unique',
+            candidates: ['/workspace/src/app.ts'],
+            kind: 'file',
+          }]),
+        )),
+    });
+    render(
+      <ChatSessionFileProvider
+        value={{ sessionId: 'task', workingDir: '/workspace', origin: { kind: 'local' } }}
+      >
+        <MarkdownRenderer
+          content="`src/app.ts:12`"
+          currentSessionId="task"
+          workingDir="/workspace"
+        />
+      </ChatSessionFileProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /src\/app\.ts/ }));
+    await waitFor(() =>
+      expect(mocks.sidebarFile).toHaveBeenCalledWith('task', 'src/app.ts', 12),
+    );
   });
 
   it('provides a copy menu for in-message heading anchors', async () => {

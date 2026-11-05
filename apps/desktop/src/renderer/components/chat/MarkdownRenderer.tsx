@@ -94,6 +94,7 @@ import { useChatSessionFile } from './ChatSessionFileContext';
 import { toRemoteMediaOrigin } from '@/lib/sessionFileOrigin';
 import { toast } from '@/lib/toast';
 import { shouldOpenTextLightboxForOrigin } from '@/lib/filePreview';
+import { isTextPreviewSupported } from '@/lib/textPreview';
 import { isRemoteFileOrigin, type SessionFileOrigin } from '@/lib/sessionFileOrigin';
 import {
   fetchChatFileWithToasts,
@@ -106,7 +107,10 @@ import {
 } from '@/lib/remoteFileOpen';
 import { i18n } from '@/i18n';
 import { toWorkdirRel } from '../../../shared/workdirPath';
-import { openDirInSidebarFileBrowser } from '@/features/right-sidebar/lib/openInSidebarFileBrowser';
+import {
+  openDirInSidebarFileBrowser,
+  openFileInSidebarFileBrowser,
+} from '@/features/right-sidebar/lib/openInSidebarFileBrowser';
 import { useSidebarTargetSessionId } from '@/features/cc-agent/embeddedSessionNavigation';
 import { registerMedia } from '@/lib/mediaPlaybackBus';
 import {
@@ -1456,6 +1460,16 @@ async function activateResolvedLocalTarget(
     return;
   }
   if (!(await shouldOpenTextLightboxForOrigin(ctx, target.absPath))) return;
+  const rel = toWorkdirRel(ctx.workingDir, target.absPath);
+  const sidebarSessionId = ctx.sidebarTargetSessionId ?? ctx.sessionId;
+  if (rel && sidebarSessionId && isTextPreviewSupported(target.absPath)) {
+    if (target.line !== undefined) {
+      await openFileInSidebarFileBrowser(sidebarSessionId, rel, target.line);
+    } else {
+      await openFileInSidebarFileBrowser(sidebarSessionId, rel);
+    }
+    return;
+  }
   setTextLightboxFile({
     path: target.absPath,
     name: basename(target.absPath),
