@@ -1,6 +1,7 @@
-import type { NativeImage } from 'electron';
+import { app, nativeImage, type NativeImage } from 'electron';
+import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { createRuntimeAppIconController } from '../app-icon.js';
+import { createRuntimeAppIconController, initializeRuntimeAppIcon } from '../app-icon.js';
 
 /* Runtime app-icon contract: test native Dock/window effects, reset, future
  * windows and decode failures through the production controller. No existing
@@ -15,6 +16,25 @@ function fixture(platform: NodeJS.Platform) {
   return { controller, dock, win, original, custom, decode };
 }
 describe('runtime application icon', () => {
+  /* Regression for unsigned mac packages: initialization must project
+   * Resources/icon.png instead of app.getFileIcon(), which returns the generic
+   * bundle icon. Existing controller tests only covered injected images.
+   * Minimal failing input: packaged darwin + generic getFileIcon. Tier: unit. */
+  it('uses the packaged icon asset instead of the generic bundle icon', async () => {
+    const original = image(), dock = { setIcon: vi.fn() };
+    Object.assign(app, { isPackaged: true, dock, getFileIcon: vi.fn(async () => image(true)) });
+    Object.defineProperty(process, 'resourcesPath', {
+      configurable: true,
+      value: '/tmp/Cindy.app/Contents/Resources',
+    });
+    const fromPath = vi.spyOn(nativeImage, 'createFromPath').mockReturnValue(original);
+
+    await initializeRuntimeAppIcon();
+
+    expect(fromPath).toHaveBeenCalledWith(path.join('/tmp/Cindy.app/Contents/Resources', 'icon.png'));
+    expect(app.getFileIcon).not.toHaveBeenCalled();
+    expect(dock.setIcon).toHaveBeenLastCalledWith(original);
+  });
   it('changes the macOS Dock with the native API and restores the original icon', () => {
     const h = fixture('darwin');
     h.controller.set(Buffer.from('png')); expect(h.dock.setIcon).toHaveBeenLastCalledWith(h.custom);
