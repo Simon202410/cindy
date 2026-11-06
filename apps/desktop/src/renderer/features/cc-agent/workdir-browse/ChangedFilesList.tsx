@@ -83,6 +83,7 @@ export function ChangedFilesList({
       ? t('rightSidebar.review.detachedHead', { oid: data.scope.headOid.slice(0, 7) })
       : t('rightSidebar.review.branchUnknown')
     : data?.scope.branch || t('rightSidebar.review.branchUnknown');
+  const branchWebUrl = data?.scope.branchWebUrl ?? null;
 
   const revert = async (targets: ReviewFileTarget[], key: string, scope: 'file' | 'section') => {
     if (!sessionId || targets.length === 0 || !canWrite) return;
@@ -353,15 +354,29 @@ export function ChangedFilesList({
             />
             <span>{t('rightSidebar.fileBrowser.autoPush')}</span>
           </label>
-          <span
-            className="ml-auto flex min-w-0 items-center gap-1 text-[var(--text-tertiary)]"
-            title={t('rightSidebar.fileBrowser.pushBranch', { branch: pushBranch })}
-          >
-            <GitBranch size={11} className="shrink-0" />
-            <span className="truncate">
-              {t('rightSidebar.fileBrowser.pushBranch', { branch: pushBranch })}
+          {branchWebUrl ? (
+            <button
+              type="button"
+              className="-my-1 ml-auto flex min-w-0 items-center gap-1 rounded-full px-1 py-1 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-soft)]"
+              title={t('rightSidebar.fileBrowser.pushBranch', { branch: pushBranch })}
+              onClick={() => void window.electronAPI.openExternal(branchWebUrl)}
+            >
+              <GitBranch size={11} className="shrink-0" />
+              <span className="truncate">
+                {t('rightSidebar.fileBrowser.pushBranch', { branch: pushBranch })}
+              </span>
+            </button>
+          ) : (
+            <span
+              className="ml-auto flex min-w-0 items-center gap-1 text-[var(--text-tertiary)]"
+              title={t('rightSidebar.fileBrowser.pushBranch', { branch: pushBranch })}
+            >
+              <GitBranch size={11} className="shrink-0" />
+              <span className="truncate">
+                {t('rightSidebar.fileBrowser.pushBranch', { branch: pushBranch })}
+              </span>
             </span>
-          </span>
+          )}
         </div>
         <div className="mt-1.5 flex items-center gap-1.5">
           <Button

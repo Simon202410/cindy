@@ -102,6 +102,10 @@ const push = vi.fn(async (_params: { sessionId: string }) => {
     aheadBehind: { ahead: 0, behind: 0, upstream: 'origin/main', stale: false },
   };
 });
+const openExternal = vi.fn(async (_url: string) => {
+  void _url;
+  return { success: true };
+});
 
 function renderList() {
   const changes = new Map<string, WorkdirGitFileChange>([
@@ -138,6 +142,7 @@ function renderList() {
       headOid: null,
       isDetached: false,
       isUnborn: false,
+      branchWebUrl: 'https://github.com/octo/repo/tree/main',
       source: 'worktree',
       aheadBehind: { ahead: 0, behind: 0, upstream: null, stale: false },
       disabledReason: null,
@@ -215,6 +220,7 @@ describe('ChangedFilesList', () => {
     window.localStorage.clear();
     vi.stubGlobal('electronAPI', {
       gitReview: { commit, commitMessage, discardFile, discardAll, push, unstageAll },
+      openExternal,
     });
   });
 
@@ -321,6 +327,20 @@ describe('ChangedFilesList', () => {
         name: 'rightSidebar.fileBrowser.autoPush',
       }) as HTMLInputElement).checked,
     ).toBe(true);
+  });
+
+  it('opens the branch page from the push branch label', async () => {
+    renderList();
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'rightSidebar.fileBrowser.pushBranch:main',
+        }),
+      );
+    });
+
+    expect(openExternal).toHaveBeenCalledWith('https://github.com/octo/repo/tree/main');
   });
 
   it('shows a push failure above the commit card', async () => {

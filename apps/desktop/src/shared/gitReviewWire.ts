@@ -33,6 +33,8 @@ export interface ReviewScope {
   headOid: string | null;
   isDetached: boolean;
   isUnborn: boolean;
+  /** Sanitized web page for the current branch's push remote. */
+  branchWebUrl?: string | null;
   source: 'telemetry' | 'worktree' | 'workingDir' | 'remote' | null;
   aheadBehind: AheadBehind;
   disabledReason: ReviewDisableReason | null;
