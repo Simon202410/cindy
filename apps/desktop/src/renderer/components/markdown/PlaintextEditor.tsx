@@ -58,6 +58,8 @@ import { defaultKeymap, history, historyKeymap, indentWithTab, redo, undo } from
 import { syntaxHighlighting } from '@codemirror/language';
 import { SearchCursor } from '@codemirror/search';
 import { showMinimap } from '@replit/codemirror-minimap';
+import { colorRegistry } from '@/themes/color-registry';
+import '@/themes/colors';
 
 import {
   clampAppearanceCodeSize,
@@ -1587,9 +1589,11 @@ export const PlaintextEditor = forwardRef<PlaintextEditorHandle, PlaintextEditor
               syntaxHighlighting(isDarkMode ? githubDarkHighlight : githubLightHighlight),
             ]
           : [];
+      // Canvas needs a resolved colour; read the token and fall back to its registered
+      // role default instead of a literal so both themes keep their own value.
       const changedLineColor =
         getComputedStyle(document.documentElement).getPropertyValue('--diff-add-fg').trim() ||
-        '#22863a';
+        String(colorRegistry.resolveDefault('diff-add-fg', isDarkMode ? 'dark' : 'light') ?? '');
       const codeMinimap = createCodeMinimap(changedLineColor);
       // 按降级 flag + chrome 模式拼 extension 列表:
       //   - skipWrap → 不挂 lineWrapping。

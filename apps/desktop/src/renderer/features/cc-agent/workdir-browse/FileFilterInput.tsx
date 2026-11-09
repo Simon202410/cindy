@@ -50,7 +50,7 @@ export function FileFilterInput({
             onChange={(e) => onChange(e.target.value)}
             placeholder={t('rightSidebar.fileBrowser.filterPlaceholder')}
             className={cn(
-              'h-7 w-full rounded-md border border-[var(--border-default)] bg-[var(--surface-elevated)]',
+              'h-7 w-full rounded-lg border border-[var(--border-default)] bg-[var(--surface-elevated)]',
               'pl-7 pr-7 text-12 text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)]',
               'outline-none transition-colors',
               'focus:border-[var(--focus-ring)] focus:ring-1 focus:ring-[var(--focus-ring-soft)]',
@@ -75,7 +75,7 @@ export function FileFilterInput({
             title={t('rightSidebar.fileBrowser.changedOnly')}
             onClick={onToggleChangedOnly}
             className={cn(
-              'flex size-7 shrink-0 items-center justify-center rounded-md border border-[var(--border-default)]',
+              'flex size-7 shrink-0 items-center justify-center rounded-lg border border-[var(--border-default)]',
               'text-sidebar-action-icon transition-colors hover:bg-sidebar-item-active hover:text-sidebar-item-active-foreground',
               'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--focus-ring)]',
               changedOnly && 'bg-sidebar-item-active text-sidebar-item-active-foreground',

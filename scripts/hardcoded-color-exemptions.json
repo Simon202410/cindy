@@ -88,7 +88,10 @@
    {
     "value": "rgb(253 207 69)",
     "before": "eyeColor:\\s*['\\\"]",
-    "object": ["MASCOT_PREVIEW_CONFIGS.blackcat", "MASCOT_PREVIEW_CONFIGS.chaku"]
+    "object": [
+     "MASCOT_PREVIEW_CONFIGS.blackcat",
+     "MASCOT_PREVIEW_CONFIGS.chaku"
+    ]
    },
    {
     "value": "rgb(135 93 66)",
@@ -103,7 +106,11 @@
    {
     "value": "black",
     "before": "eyeColor:\\s*['\\\"]",
-    "object": ["MASCOT_PREVIEW_CONFIGS.boli", "MASCOT_PREVIEW_CONFIGS.whitesnow", "MASCOT_PREVIEW_CONFIGS.muffin"]
+    "object": [
+     "MASCOT_PREVIEW_CONFIGS.boli",
+     "MASCOT_PREVIEW_CONFIGS.whitesnow",
+     "MASCOT_PREVIEW_CONFIGS.muffin"
+    ]
    },
    {
     "value": "rgb(174 33 70)",
@@ -295,5 +302,68 @@
     "object": "SCREENSHOT_OVERLAY"
    }
   ]
+ },
+ {
+  "glob": "apps/desktop/src/renderer/styles/globals.css",
+  "reason": "取色器的色相条：0°–360° 纯色相序列就是 HSV 空间的定义，不是可替换的主题色角色（2026-11-09 设计裁决，DESIGN.md §2 已登记为功能例外）",
+  "owner": "local/custom-main",
+  "matches": [
+   {
+    "value": "hsl(0 100% 50%)",
+    "before": "\\s*",
+    "selector": ".cm-hex-picker__hue"
+   },
+   {
+    "value": "hsl(60 100% 50%)",
+    "before": "\\s*",
+    "selector": ".cm-hex-picker__hue"
+   },
+   {
+    "value": "hsl(120 100% 50%)",
+    "before": "\\s*",
+    "selector": ".cm-hex-picker__hue"
+   },
+   {
+    "value": "hsl(180 100% 50%)",
+    "before": "\\s*",
+    "selector": ".cm-hex-picker__hue"
+   },
+   {
+    "value": "hsl(240 100% 50%)",
+    "before": "\\s*",
+    "selector": ".cm-hex-picker__hue"
+   },
+   {
+    "value": "hsl(300 100% 50%)",
+    "before": "\\s*",
+    "selector": ".cm-hex-picker__hue"
+   },
+   {
+    "value": "hsl(360 100% 50%)",
+    "before": "\\s*",
+    "selector": ".cm-hex-picker__hue"
+   }
+  ],
+  "reviewDate": "2027-05-09",
+  "maintenanceOwner": "custom-main（本地定制）",
+  "basis": "DESIGN.md §2 Gradient System functional exception; hue stops are HSV space data, not palette roles."
+ },
+ {
+  "glob": "apps/desktop/src/renderer/components/markdown/hexColorPicker.ts",
+  "reason": "取色器的饱和度/明度方块：黑色→透明的纵向叠加与白色→纯色相的横向叠加固定使用纯黑与纯白两极，属于 HSV 空间本身，不是主题色角色（2026-11-09 设计裁决）",
+  "owner": "local/custom-main",
+  "matches": [
+   {
+    "value": "hsl(0 0% 0%)",
+    "before": "linear-gradient\\(to top, "
+   },
+   {
+    "value": "hsl(0 0% 100%)",
+    "before": "linear-gradient\\(to right, "
+   }
+  ],
+  "reviewDate": "2027-05-09",
+  "maintenanceOwner": "custom-main（本地定制）",
+  "basis": "DESIGN.md §2 Gradient System functional exception; the two poles are HSV space data, not palette roles."
  }
 ]

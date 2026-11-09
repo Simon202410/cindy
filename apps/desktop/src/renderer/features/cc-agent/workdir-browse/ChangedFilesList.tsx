@@ -233,7 +233,7 @@ export function ChangedFilesList({
       </div>
 
       {error && (
-        <div className="px-3 py-2 text-11 text-[var(--destructive)]">{error}</div>
+        <div className="px-3 py-2 text-11 text-[hsl(var(--destructive))]">{error}</div>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-2">
         {visiblePaths.map((path) => {
@@ -258,9 +258,9 @@ export function ChangedFilesList({
                 onSelectFile(path);
               }}
               className={cn(
-                'group/changed-file relative flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left',
-                'text-12 text-[var(--text-primary)] hover:bg-[var(--sidebar-item-hover)]',
-                selectedPath === path && 'bg-[var(--sidebar-item-active)]',
+                'group/changed-file relative flex h-8 w-full min-w-0 items-center gap-2 rounded-lg px-2 text-left',
+                'text-12 text-[var(--text-primary)] hover:bg-sidebar-item-hover',
+                selectedPath === path && 'bg-sidebar-item-active',
               )}
             >
               <Icon

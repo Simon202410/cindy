@@ -1033,3 +1033,9 @@ Switch 解耦。插件插槽挂载同一个媒体组件，不再维护单独拖�
 
 实现：`components/ui/settings-rows.tsx` 与各设置页；现行规则见 `DESIGN.md` §4 Desktop settings rows。
 
+
+## 2026-11-09 · 取色器的两处渐变登记为功能例外
+
+代码编辑器的 hex 颜色预览带一个取色器：饱和度/明度方块（黑色→透明叠白色→纯色相）与色相条（0°→360°）。这两条渐变不是装饰，而是 HSV 两个维度本身的可视化，换成纯色就失去取色语义，因此按 §2「功能性例外」登记，仅限该控件内部，不得外溢到其他面板或背景。同时把桌面背景下消息列表底部的边缘渐隐并入 `styles/globals.css` 的既有登记（14→15）。
+
+实现：`components/markdown/hexColorPicker.ts`、`styles/globals.css`；门禁见 `designEffectsDiscipline.test.ts` 的 `GRADIENT_REGISTRY`，现行规则见 `DESIGN.md` §2 Gradient System。

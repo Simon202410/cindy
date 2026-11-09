@@ -51,10 +51,11 @@ export function TaskPartnerRail({
           style={WINDOW_NO_DRAG_STYLE}
           onClick={() => onSelect(null)}
           className={cn(
-            'inline-flex h-6 w-6 items-center justify-center rounded-full transition-[background-color,opacity,filter] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-40',
+            'inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-40',
             defaultActive
               ? 'bg-[var(--surface-chip)] text-[var(--text-primary)]'
-              : 'text-[var(--text-tertiary)] opacity-45 grayscale hover:bg-[var(--surface-hover)] hover:opacity-75',
+              // 未激活用最弱墨档表示不可用，不再叠 opacity 假装层级（DESIGN §3 墨水阶梯）。
+              : 'text-[var(--text-placeholder)] hover:bg-[var(--surface-hover)]',
           )}
         >
           <MessageCircle size={13} strokeWidth={1.8} />
@@ -75,7 +76,7 @@ export function TaskPartnerRail({
             style={WINDOW_NO_DRAG_STYLE}
             onClick={() => onSelect(active ? null : bot.id)}
             className={cn(
-              'inline-flex h-6 w-6 items-center justify-center rounded-full transition-[background-color,opacity,filter] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-40',
+              'inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-40',
               active
                 ? 'bg-[var(--surface-chip)] opacity-100'
                 : 'opacity-45 grayscale hover:bg-[var(--surface-hover)] hover:opacity-75',
