@@ -133,7 +133,13 @@ test('old approved Toast, hljs, composer and asset values are narrow, not file b
   assert.deepEqual(objectPathAt(anonymous, anonymous.indexOf('"#fff"')), []);
   const css = fs.readFileSync(path.join(root,renderer,'styles/globals.css'),'utf8');
   const approvedSelectors = inspect(renderer+'styles/globals.css',css).filter(f=>f.rule==='bare-color' && f.disposition==='allowed');
-  assert.deepEqual(approvedSelectors.map(f=>f.value),['#2573ec','#c9d1d9']);
+  // 除 DS-7 的两个提亮值外，globals.css 只多批准过取色器色相条：0°/60°…360° 的纯色相
+  // 序列是 HSV 空间本身（2026-11-09 设计裁决，登记在 DESIGN §2 Gradient System）。
+  assert.deepEqual(approvedSelectors.map(f=>f.value),[
+    '#2573ec','#c9d1d9',
+    'hsl(0 100% 50%)','hsl(60 100% 50%)','hsl(120 100% 50%)','hsl(180 100% 50%)',
+    'hsl(240 100% 50%)','hsl(300 100% 50%)','hsl(360 100% 50%)',
+  ]);
   for (const file of ['components/ui/toast/Toast.tsx', 'components/settings/AgentIslandSection.tsx', 'components/settings/WorkLouderCodexKeyboardLayout.tsx']) {
     const source = fs.readFileSync(path.join(root, renderer + file), 'utf8');
     const hits = inspect(renderer + file, source).filter(f => f.rule === 'bare-color');
