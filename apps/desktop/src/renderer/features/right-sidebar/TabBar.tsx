@@ -19,7 +19,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Activity, MessagesSquare, Bot, FolderTree, Globe, Terminal, GitPullRequestArrow, UsersRound, ListTodo, Pin, Plus, Puzzle, X, Maximize2, Minimize2, PanelRightClose, PictureInPicture2, Wrench } from 'lucide-react';
+import { Activity, MessagesSquare, Bot, FolderTree, Globe, Terminal, GitPullRequestArrow, UsersRound, ListTodo, Pin, Plus, Puzzle, X, Maximize2, Minimize2, PictureInPicture2, Wrench } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
@@ -158,7 +158,6 @@ const KIND_ICON: Record<BuiltinTabKindId, LucideIcon> = {
   'cindy-make': Wrench,
   'plugin-view': Puzzle,
   'plugin-task': Puzzle,
-  'plugin-tab-view': Puzzle,
 };
 
 const KIND_LABEL_KEY: Record<BuiltinTabKindId, string> = {
@@ -178,7 +177,6 @@ const KIND_LABEL_KEY: Record<BuiltinTabKindId, string> = {
   'cindy-make': 'settings.cindyMake.title',
   'plugin-view': 'rightSidebar.tabs.kinds.pluginView',
   'plugin-task': 'rightSidebar.tabs.kinds.pluginTask',
-  'plugin-tab-view': 'rightSidebar.tabs.kinds.pluginView',
 };
 
 /**
@@ -314,7 +312,7 @@ export function TabBar({
               aria-label={t('rightSidebar.tabs.controls.closeAria')}
               onClick={onCloseSidebar}
             >
-              <PanelRightClose size={15} />
+              <X size={15} />
             </ChromeIconButton>
           )}
           {onShowSidebar && (
@@ -533,7 +531,7 @@ export function TabStrip({
                   addButtonClassName,
                   dropdownOpen
                     ? 'bg-[var(--surface-chip)] text-[var(--text-primary)]'
-                    : 'text-[var(--titlebar-icon)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]',
+                    : 'text-[hsl(var(--titlebar-icon))] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]',
                 )}
               >
                 <Plus size={13} />

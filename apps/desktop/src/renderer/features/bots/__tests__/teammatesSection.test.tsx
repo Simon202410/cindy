@@ -98,8 +98,8 @@ vi.mock('../BotDeleteDialog', () => ({
 import { TeammatesSection } from '../TeammatesSection';
 import { BotConnectionStatus } from '../BotConnectionStatus';
 import { markBotRead, resetBotReadStateForTests } from '../botReadState';
-import { sidebarOwnerStorageKey } from '@/lib/sidebarOwnerStorage';
 import { readTeammatesGroupSource, readTeammatesSectionCollapsed } from '../teammatesSectionPrefs';
+import { setDataOwnerGeneration } from '@/contexts/dataOwnerGeneration';
 
 interface BotFixture {
   id: string;
@@ -139,6 +139,7 @@ beforeEach(() => {
   messageListeners = [];
   window.localStorage.clear();
   resetBotReadStateForTests();
+  setDataOwnerGeneration('fixture-owner', 1);
   mocks.navigate.mockReset();
   mocks.observeSession.mockReset();
   mocks.refreshBotProfiles.mockReset();
