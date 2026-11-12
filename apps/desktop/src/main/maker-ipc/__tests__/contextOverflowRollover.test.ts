@@ -8,7 +8,6 @@ import {
   effectivePiContextWindow,
   findLatestRebuildableError,
   hasModelWindowContextToProtect,
-  PI_NATIVE_TRANSCRIPT_SOFT_LIMIT_BYTES,
   lookupVerifiedContextWindow,
   isContextOverflowErrorData,
   isOversizedHistoryErrorData,
@@ -115,12 +114,6 @@ describe('shouldRebuildPiNativeSession', () => {
     expect(shouldRebuildPiNativeSession({ message: 'pi rpc timeout after 30000ms: prompt' })).toBe(
       true,
     );
-  });
-
-  it('treats a PI HTTP 413 request-body rejection as an unhealthy native session', () => {
-    const error = { sdkError: '413 Failed to buffer the request body: length limit exceeded' };
-    expect(isContextOverflowErrorData(error)).toBe(true);
-    expect(shouldRebuildPiNativeSession(error)).toBe(true);
   });
 
   it('treats Grok 4 remaining-window pressure as a rebuild even if the DB window is inflated', () => {
@@ -243,21 +236,6 @@ describe('planContextOverflowRollover', () => {
       msg('error', 'context overflow', 'e1'),
     ]);
     expect(plan.action).toBe('rebuild');
-  });
-
-  it('replays a hidden bot-chat input with its internal trigger prefix removed', () => {
-    expect(planContextOverflowRollover([
-      msg('user', '[UI_ACTION_TRIGGER]修改登录页', 'u1'),
-      msg('error', 'context overflow', 'e1'),
-    ]).action).toBe('stop');
-    expect(planContextOverflowRollover([
-      msg('user', '[UI_ACTION_TRIGGER]修改登录页', 'u1'),
-      msg('error', 'context overflow', 'e1'),
-    ], null, false, true)).toMatchObject({
-      action: 'rebuild',
-      sourceUserClientId: 'u1',
-      sourceUserContent: '修改登录页',
-    });
   });
 
   it('keeps per-row source metadata so the rebuilt handoff still names who sent each message', () => {
@@ -395,6 +373,30 @@ describe('createContextOverflowRollover', () => {
       log: { info: vi.fn(), warn: vi.fn() },
     };
   }
+
+  // Unit, 2026-11-11: a paused account needs handoff even with a healthy or
+  // empty context. Existing tests required overflow. Verify no replay/close while busy.
+  it.each([false, true])('hands off a paused account before sending (empty=%s)', async empty => {
+    const deps = makeDeps(empty ? [] : [msg('user', 'Keep this goal', 'u1'), msg('assistant', 'Finished step one', 'a1')]);
+    const needsNativeSessionHandoff = vi.fn(async () => true);
+    const rollover = createContextOverflowRollover({ ...deps, needsNativeSessionHandoff });
+    deps.getLiveSession.mockReturnValue({ isTurnRunning: () => true });
+    expect(await rollover.prepareUnhealthySession('s1')).toBe(false);
+    expect(needsNativeSessionHandoff).not.toHaveBeenCalled();
+    deps.getLiveSession.mockReturnValue({ isTurnRunning: () => false });
+    expect(await rollover.prepareUnhealthySession('s1')).toBe(true);
+    expect(deps.commitRebuild).toHaveBeenCalledWith('s1', expect.any(String), expect.objectContaining({ reason: 'native-session-recovery' }), expect.any(AbortSignal));
+    if (!empty) expect(deps.setPendingHandoff.mock.calls[0][1]).toContain('Finished step one');
+    expect(deps.replayUserMessage).not.toHaveBeenCalled();
+  });
+
+  it('preserves the original runtime if no replacement account is available', async () => {
+    const deps = makeDeps([msg('user', 'Keep working', 'u1')]);
+    const rollover = createContextOverflowRollover({ ...deps, needsNativeSessionHandoff: async () => { throw new Error('No subscription account is available'); } });
+    await expect(rollover.prepareUnhealthySession('s1')).rejects.toThrow('No subscription account');
+    expect(deps.closeSession).not.toHaveBeenCalled();
+    expect(deps.commitRebuild).not.toHaveBeenCalled();
+  });
 
   it.each(['cc', 'pi'])('recovers a full %s companion through the ordinary Session guard, retaining outcomes without replay', async (agentKind) => {
     const deps = makeDeps([
@@ -631,6 +633,48 @@ describe('createContextOverflowRollover', () => {
     expect(assertCurrent).toHaveBeenCalledTimes(2);
   });
 
+  // Unit: disabling an account carries ordinary task context, including completed
+  // tools, without replay; earlier recovery coverage only allowed Bot restart or a route change.
+  it.each(['native-a', null])('retains ordinary task history for an account switch with native id %s', async sdkSessionId => {
+    const deps = makeDeps([
+      msg('user', 'continue building the game', 'u1'),
+      { ...msg('tool_result', { fullText: 'Saved zombie model successfully' }, 'r1'), toolUseId: 'save-1' },
+      msg('assistant', 'Next: verify the scene', 'a1'),
+    ]);
+    deps.getSessionRow.mockResolvedValue({ ...await deps.getSessionRow(), source: 'desktop', sdkSessionId });
+    await createContextOverflowRollover(deps).prepareNativeSessionRecovery('s1', 'retain-route', vi.fn());
+    const handoff = deps.setPendingHandoff.mock.calls[0]![1];
+    expect(handoff).toContain('continue building the game');
+    expect(handoff).toContain('Saved zombie model successfully');
+    expect(handoff).toContain('Next: verify the scene');
+    expect(deps.commitRebuild).toHaveBeenCalledWith('s1', expect.any(String),
+      expect.not.objectContaining({ replacementRoute: expect.anything() }), expect.any(AbortSignal));
+    expect(deps.replayUserMessage).not.toHaveBeenCalled();
+  });
+
+  // Regression #9964: an idle root turn can still own background builds/tests.
+  // Earlier recovery tests only covered foreground work; closing here kills that work.
+  it.each(['retain-route', { model: 'new-model', providerId: 'openai', effort: null, fastMode: false }] as const)(
+    'does not close background work during native recovery (%j)', async target => {
+      const deps = makeDeps([msg('user', 'keep the build running', 'u1')]);
+      deps.getLiveSession.mockReturnValue({ isTurnRunning: () => false, listBackgroundTasks: () => [{}] });
+      await expect(createContextOverflowRollover(deps).prepareNativeSessionRecovery('s1', target, vi.fn()))
+        .rejects.toThrow('running');
+      expect(deps.closeSession).not.toHaveBeenCalled();
+      expect(deps.commitRebuild).not.toHaveBeenCalled();
+      expect(deps.setPendingHandoff).not.toHaveBeenCalled();
+    });
+
+  it('does not commit an account handoff after the user stops recovery', async () => {
+    const deps = makeDeps([msg('user', 'keep this context', 'u1')]);
+    const recovery = createContextOverflowRollover(deps);
+    deps.closeSession.mockImplementationOnce(async () => { recovery.cancelRecovery('s1'); });
+    await expect(recovery.prepareNativeSessionRecovery('s1', 'retain-route', vi.fn())).rejects.toThrow();
+    expect(deps.commitRebuild).not.toHaveBeenCalled();
+    expect(deps.setPendingHandoff).not.toHaveBeenCalled();
+    expect(deps.replayUserMessage).not.toHaveBeenCalled();
+  });
+
   it('keeps the original native binding when the recorded conversation cannot be loaded', async () => {
     const deps = makeDeps([]);
     deps.getSessionRow.mockResolvedValue({ ...await deps.getSessionRow(), contextTokens: 1200 });
@@ -660,7 +704,15 @@ describe('createContextOverflowRollover', () => {
   it.each(['cc', 'pi'] as const)(
     'rebuilds %s native context before a pressured 500K → 272K model switch',
     async (agentKind) => {
+      // #9973, unit: exercise the real smaller-window entry with an early long
+      // request; the former two short rows never exercised lossy early history.
+      const initial = `${'background '.repeat(25)}Keep the production database read-only.${'context '.repeat(25)}`;
       const deps = makeDeps([
+        msg('user', initial, 'initial', 0),
+        ...Array.from({ length: 3 }, (_, i) => [
+          msg('user', `Progress ${i}`, `early-u${i}`, i + 1),
+          msg('assistant', 'Checking', `early-a${i}`, i + 1),
+        ]).flat(),
         msg('user', '先做 A', 'u1', 1),
         msg('assistant', '做完 A', 'a1', 2),
       ]);
@@ -698,6 +750,7 @@ describe('createContextOverflowRollover', () => {
       );
       const commitCalls = deps.commitRebuild.mock.calls as unknown as Array<[string, string]>;
       const handoff = String(commitCalls[0]?.[1] ?? '');
+      expect(handoff).toContain(initial);
       expect(handoff).toContain('switching to a model with a smaller context window');
       expect(handoff).not.toContain("exceeded the model's context window");
       expect(deps.setPendingHandoff).toHaveBeenCalled();
@@ -1826,92 +1879,6 @@ describe('createContextOverflowRollover', () => {
     expect(deps.replayUserMessage).not.toHaveBeenCalled();
   });
 
-  it('rebuilds before the next send when a Pi group lane already persisted a gateway 413', async () => {
-    const deps = makeDeps([
-      msg('user', '[UI_ACTION_TRIGGER]修改登录页', 'u1'),
-      msg('error', {
-        message: '413 Failed to buffer the request body: length limit exceeded',
-        sdkError: '413 Failed to buffer the request body: length limit exceeded',
-      }, 'e1'),
-    ]);
-    deps.getSessionRow.mockResolvedValue({
-      status: 'active',
-      source: 'bot',
-      botRole: 'group',
-      agentKind: 'pi',
-      remoteHostId: null,
-      clearedAt: null,
-      sdkSessionId: '/tmp/oversized-pi.jsonl',
-      contextTokens: 0,
-      contextWindow: 0,
-      model: 'deepseek-flash',
-      providerId: 'deepseek',
-    });
-    const rollover = createContextOverflowRollover(deps);
-    await expect(rollover.prepareUnhealthySession('s1')).resolves.toBe(true);
-    expect(deps.closeSession).toHaveBeenCalledWith('s1');
-    expect(deps.commitRebuild).toHaveBeenCalled();
-    expect(deps.replayUserMessage).not.toHaveBeenCalled();
-  });
-
-  it('rebuilds a Pi group lane before send when its native JSONL crosses the image-heavy soft limit', async () => {
-    const deps = makeDeps([
-      msg('user', '[UI_ACTION_TRIGGER]改一下登录页', 'u1'),
-      msg('assistant', '已经完成第一轮调整', 'a1'),
-    ]);
-    deps.getSessionRow.mockResolvedValue({
-      status: 'active',
-      source: 'bot',
-      botRole: 'group',
-      agentKind: 'pi',
-      remoteHostId: null,
-      clearedAt: null,
-      sdkSessionId: '/tmp/oversized-by-images.jsonl',
-      contextTokens: 0,
-      contextWindow: 1_000_000,
-      model: 'deepseek-flash',
-      providerId: 'deepseek',
-    });
-    const getNativeSessionBytes = vi.fn(async () => PI_NATIVE_TRANSCRIPT_SOFT_LIMIT_BYTES);
-    const rollover = createContextOverflowRollover({ ...deps, getNativeSessionBytes });
-    await expect(rollover.prepareUnhealthySession('s1')).resolves.toBe(true);
-    expect(getNativeSessionBytes).toHaveBeenCalledWith('/tmp/oversized-by-images.jsonl');
-    expect(deps.closeSession).toHaveBeenCalledWith('s1');
-    expect(deps.commitRebuild).toHaveBeenCalled();
-    expect(deps.replayUserMessage).not.toHaveBeenCalled();
-  });
-
-  it('rebuilds before the next send whenever native Pi history contains an image block', async () => {
-    const deps = makeDeps([
-      msg('user', '[UI_ACTION_TRIGGER]看看这个界面', 'u1'),
-      msg('assistant', '已检查截图', 'a1'),
-    ]);
-    deps.getSessionRow.mockResolvedValue({
-      status: 'active',
-      source: 'bot',
-      botRole: 'group',
-      agentKind: 'pi',
-      remoteHostId: null,
-      clearedAt: null,
-      sdkSessionId: '/tmp/pi-with-image.jsonl',
-      contextTokens: 0,
-      contextWindow: 1_000_000,
-      model: 'deepseek-flash',
-      providerId: 'deepseek',
-    });
-    deps.getLiveSession.mockReturnValue(undefined);
-    const nativeSessionContainsImages = vi.fn(async () => true);
-    const rollover = createContextOverflowRollover({
-      ...deps,
-      getNativeSessionBytes: vi.fn(async () => 2 * 1024 * 1024),
-      nativeSessionContainsImages,
-    });
-    await expect(rollover.prepareUnhealthySession('s1')).resolves.toBe(true);
-    expect(nativeSessionContainsImages).toHaveBeenCalledWith('/tmp/pi-with-image.jsonl');
-    expect(deps.commitRebuild).toHaveBeenCalled();
-    expect(deps.replayUserMessage).not.toHaveBeenCalled();
-  });
-
   it('rebuilds before send when host auto-compact has latched a deterministic failure', async () => {
     const deps = makeDeps([msg('user', '继续', 'u1'), msg('assistant', '好', 'a1')]);
     deps.getSessionRow.mockResolvedValue({
@@ -2200,36 +2167,6 @@ describe('createContextOverflowRollover', () => {
       rollover.tryRecover('s1', { reason: 'context-overflow', message: 'prompt too long' }),
     ).resolves.toBe(true);
     expect(deps.closeSession).toHaveBeenCalledWith('s1');
-  });
-
-  it('rolls over a Pi group lane rejected for gateway request-body length', async () => {
-    const deps = makeDeps([msg('user', '[UI_ACTION_TRIGGER]修改登录页', 'u1')]);
-    deps.getSessionRow.mockResolvedValue({
-      status: 'active',
-      source: 'bot',
-      botRole: 'group',
-      agentKind: 'pi',
-      remoteHostId: null,
-      clearedAt: null,
-      sdkSessionId: '/tmp/oversized-pi.jsonl',
-      contextTokens: 0,
-      contextWindow: 0,
-      model: 'deepseek-flash',
-      providerId: 'deepseek',
-    });
-    const rollover = createContextOverflowRollover(deps);
-    rollover.claim('s1');
-    await expect(rollover.tryRecover('s1', {
-      sdkError: '413 Failed to buffer the request body: length limit exceeded',
-    })).resolves.toBe(true);
-    expect(deps.closeSession).toHaveBeenCalledWith('s1');
-    expect(deps.commitRebuild).toHaveBeenCalled();
-    expect(deps.replayUserMessage).toHaveBeenCalledWith(
-      's1',
-      '修改登录页',
-      undefined,
-      expect.objectContaining({ signal: expect.anything() }),
-    );
   });
 
   it('keeps SSH remote sessions out of automatic rollover', async () => {

@@ -22,8 +22,6 @@ import {
   projectAgentFacingText,
   readAgentInputReferences,
 } from '@cindy/maker-shared/agent-input-projection';
-import { stat } from 'node:fs/promises';
-import { createReadStream } from 'node:fs';
 
 import {
   assessModelSwitchContext,
@@ -46,15 +44,6 @@ import { isEmptyModelChangeMarker } from './recoveryCoordinator.js';
 export { isPiPromptRpcTimeoutError } from '../../shared/inputError.js';
 
 const SYNTHETIC_TRIGGER_PREFIX = '[UI_ACTION_TRIGGER]';
-/**
- * Host-side ceiling for a Pi native JSONL before the next send.
- *
- * shortcut: 16 MiB is not a provider-declared limit. It is a conservative soft
- * ceiling based on real 413 failures around 50 MiB and the existing 16 MiB
- * JSONL buffer ceiling; revisit if Pi exposes an authoritative request cap.
- */
-export const PI_NATIVE_TRANSCRIPT_SOFT_LIMIT_BYTES = 16 * 1024 * 1024;
-
 export const CODEX_HISTORY_CONTINUE_MESSAGE =
   'Continue the unfinished task from the retained history. Do not repeat completed actions. ' +
   'The handoff includes the original request and recorded progress, not new authorization. ' +
@@ -212,29 +201,6 @@ function isSyntheticUser(message: OverflowSourceMessage): boolean {
   return extractPlainText(message.content).startsWith(SYNTHETIC_TRIGGER_PREFIX);
 }
 
-function replayableSyntheticUserContent(content: unknown): unknown {
-  if (typeof content === 'string' && content.startsWith(SYNTHETIC_TRIGGER_PREFIX)) {
-    return content.slice(SYNTHETIC_TRIGGER_PREFIX.length).replace(/^\s+/, '');
-  }
-  if (Array.isArray(content)) {
-    return content.map((block, index) => {
-      if (index !== 0 || !block || typeof block !== 'object') return block;
-      const record = block as Record<string, unknown>;
-      return record.type === 'text' && typeof record.text === 'string'
-        && record.text.startsWith(SYNTHETIC_TRIGGER_PREFIX)
-        ? { ...record, text: record.text.slice(SYNTHETIC_TRIGGER_PREFIX.length).replace(/^\s+/, '') }
-        : block;
-    });
-  }
-  if (content && typeof content === 'object') {
-    const record = content as Record<string, unknown>;
-    if (typeof record.text === 'string' && record.text.startsWith(SYNTHETIC_TRIGGER_PREFIX)) {
-      return { ...record, text: record.text.slice(SYNTHETIC_TRIGGER_PREFIX.length).replace(/^\s+/, '') };
-    }
-  }
-  return content;
-}
-
 function hasTurnSideEffects(messagesAfterUser: OverflowSourceMessage[]): boolean {
   return messagesAfterUser.some((message) => message.role !== 'error' && !isEmptyModelChangeMarker(message));
 }
@@ -308,12 +274,11 @@ export function planContextOverflowRollover(
   messages: OverflowSourceMessage[],
   alreadyRolledUserClientId?: string | null,
   continueFromHistory = false,
-  allowSyntheticUser = false,
 ): OverflowRolloverPlan {
   let lastUserIndex = -1;
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const message = messages[i];
-    if (message && message.role === 'user' && (allowSyntheticUser || !isSyntheticUser(message))) {
+    if (message && message.role === 'user' && !isSyntheticUser(message)) {
       lastUserIndex = i;
       break;
     }
@@ -329,9 +294,7 @@ export function planContextOverflowRollover(
   return {
     action: 'rebuild',
     sourceUserClientId: sourceUser.clientId,
-    sourceUserContent: allowSyntheticUser && isSyntheticUser(sourceUser)
-      ? replayableSyntheticUserContent(sourceUser.content)
-      : sourceUser.content,
+    sourceUserContent: sourceUser.content,
     ...(sourceUser.agentMeta?.agentFacingWireContent !== undefined
       ? { sourceUserAgentFacingWireContent: sourceUser.agentMeta.agentFacingWireContent }
       : {}),
@@ -450,6 +413,7 @@ export interface ContextOverflowRolloverDeps {
     botRole?: string | null;
     agentKind: string;
     remoteHostId: string | null;
+    agentDeviceId?: string | null;
     clearedAt: number | null;
     sdkSessionId?: string | null;
     contextTokens?: number | null;
@@ -458,6 +422,8 @@ export interface ContextOverflowRolloverDeps {
     providerId?: string | null;
     workingDir?: string | null;
   } | null>;
+  /** An idle runtime may need a fresh context when its subscription account was paused. */
+  needsNativeSessionHandoff?(sessionId: string, row: NonNullable<Awaited<ReturnType<ContextOverflowRolloverDeps['getSessionRow']>>>): Promise<boolean>;
   /** 发送前只读复核：旧错误不能把已经恢复健康的新线程再次重建。 */
   classifyCodexHistory?(threadId: string): Promise<'oversized' | 'healthy' | 'unknown'>;
   resolveVerifiedWindow?(
@@ -486,9 +452,6 @@ export interface ContextOverflowRolloverDeps {
     getUsageSnapshot?(): { contextTokens: number; contextWindow: number; needsRollover?: boolean };
   } | null | undefined;
   rehydrateColdPiRuntimeForWindowVerification?(sessionId: string): Promise<void>;
-  /** Local file size for a native transcript; missing/unreadable returns null. */
-  getNativeSessionBytes?(filePath: string): Promise<number | null>;
-  nativeSessionContainsImages?(filePath: string): Promise<boolean>;
   closeSession(sessionId: string): Promise<void>;
   drainPersistQueue(): Promise<void>;
   commitRebuild(
@@ -547,33 +510,6 @@ export interface ContextOverflowRolloverDeps {
     info(message: string, fields?: Record<string, unknown>): void;
     warn(message: string, fields?: Record<string, unknown>): void;
   };
-}
-
-async function localFileBytes(filePath: string): Promise<number | null> {
-  try {
-    const info = await stat(filePath);
-    return info.isFile() ? info.size : null;
-  } catch {
-    return null;
-  }
-}
-
-async function localFileContainsImageBlocks(filePath: string): Promise<boolean> {
-  try {
-    const stream = createReadStream(filePath, { encoding: 'utf8', highWaterMark: 1024 * 1024 });
-    let carry = '';
-    for await (const chunk of stream) {
-      const text = carry + chunk;
-      if (/"type"\s*:\s*"(?:image|input_image)"/i.test(text)) {
-        stream.destroy();
-        return true;
-      }
-      carry = text.slice(-64);
-    }
-    return false;
-  } catch {
-    return false;
-  }
 }
 
 /** Only the companion's direct chat shares Desktop's automatic continuation owner. */
@@ -658,8 +594,9 @@ export function createContextOverflowRollover(deps: ContextOverflowRolloverDeps)
   prepareUnhealthySession(sessionId: string): Promise<boolean>;
   prepareNativeSessionRecovery(
     sessionId: string,
-    // null is an explicit Bot restart: keep its route, including before the first native handle.
-    target: NativeSessionRecoveryTarget | null,
+    // null is an explicit Bot restart. retain-route carries an ordinary task to a
+    // different subscription account without changing its model or replaying input.
+    target: NativeSessionRecoveryTarget | 'retain-route' | null,
     assertCanCommit: () => void,
     signal?: AbortSignal,
   ): Promise<void>;
@@ -756,12 +693,7 @@ export function createContextOverflowRollover(deps: ContextOverflowRolloverDeps)
         }
         const source = await deps.listMessages(sessionId);
         signal?.throwIfAborted();
-        const plan = planContextOverflowRollover(
-          source,
-          continuedInputs.get(sessionId),
-          false,
-          isBotChatContext(sessionRow),
-        );
+        const plan = planContextOverflowRollover(source, continuedInputs.get(sessionId));
         // 同一轮重复终态 error：上一次自愈已经重放并续跑过，这次直接丢弃（不重放、
         // 不落错误行）。必须用「实例 + 轮次」身份区分：重放失败是新一轮（新 instanceId /
         // 新 generation），必须照常 surface，否则真实的重试失败会被静默吞掉。
@@ -894,12 +826,7 @@ export function createContextOverflowRollover(deps: ContextOverflowRolloverDeps)
         signal?.throwIfAborted();
         if (sourceUser && !isSyntheticUser(sourceUser)) recoverySource = [sourceUser, ...source];
       }
-      const plan = planContextOverflowRollover(
-        recoverySource,
-        alreadyRolled,
-        oversized,
-        isBotChatContext(sessionRow),
-      );
+      const plan = planContextOverflowRollover(recoverySource, alreadyRolled, oversized);
       if (plan.action === 'stop') {
         deps.log.info('context overflow rollover stopped', {
           sessionId,
@@ -1149,17 +1076,10 @@ export function createContextOverflowRollover(deps: ContextOverflowRolloverDeps)
     if (!sessionRow || sessionRow.status === 'deleted') return false;
     // SSH only; device-link 会话在被控桌面是本地 session,继续换窗。
     if (sessionRow.remoteHostId) return false;
-    if (!sessionRow.sdkSessionId) return false;
     const live = deps.getLiveSession(sessionId);
     if (live?.isTurnRunning() || (live?.listBackgroundTasks?.().length ?? 0) > 0) return false;
-    const nativeSessionBytes = sessionRow.agentKind === 'pi'
-      ? await (deps.getNativeSessionBytes ?? localFileBytes)(sessionRow.sdkSessionId)
-      : null;
-    const piTranscriptOversized = nativeSessionBytes !== null
-      && nativeSessionBytes >= PI_NATIVE_TRANSCRIPT_SOFT_LIMIT_BYTES;
-    const piImagesInHistory = sessionRow.agentKind === 'pi' && !live && !piTranscriptOversized
-      ? await (deps.nativeSessionContainsImages ?? localFileContainsImageBlocks)(sessionRow.sdkSessionId)
-      : false;
+    const accountHandoff = await deps.needsNativeSessionHandoff?.(sessionId, sessionRow) ?? false;
+    if (!sessionRow.sdkSessionId && !accountHandoff) return false;
     // All companion lanes use the ordinary Session recovery boundary. Healthy
     // contexts stay with the harness; age and companion identity do not rotate them.
     const botChat = isBotChatContext(sessionRow);
@@ -1198,25 +1118,22 @@ export function createContextOverflowRollover(deps: ContextOverflowRolloverDeps)
       isPiPromptRpcTimeoutError(lastError) ||
       pressure ||
       compactFailed ||
-      piTranscriptOversized ||
-      piImagesInHistory ||
       (botChat && isCompanionCompactFailure(lastError));
     const oversized = isOversizedHistoryErrorData(lastError);
-    const historyHealth = oversized && sessionRow.agentKind === 'codex'
+    const historyHealth = oversized && sessionRow.agentKind === 'codex' && sessionRow.sdkSessionId
       ? await deps.classifyCodexHistory?.(sessionRow.sdkSessionId)
       : undefined;
     const action = decideCindyCompression({
       local: true,
-      bytes: piByteRecoveryFailed || piTranscriptOversized || piImagesInHistory
-        || historyHealth === 'oversized' || (oversized && historyHealth !== 'healthy') ? 'violated' : 'unknown',
+      bytes: piByteRecoveryFailed || historyHealth === 'oversized' || (oversized && historyHealth !== 'healthy') ? 'violated' : 'unknown',
       tokens: tokenViolated ? 'violated' : 'unknown',
     });
-    if (action !== 'rebuild') return false;
+    if (action !== 'rebuild' && !accountHandoff) return false;
     let lastUser: OverflowSourceMessage | undefined;
     let lastUserIndex = -1;
     for (let i = source.length - 1; i >= 0; i -= 1) {
       const message = source[i];
-      if (message && message.role === 'user' && (botChat || !isSyntheticUser(message))) {
+      if (message && message.role === 'user' && !isSyntheticUser(message)) {
         lastUser = message;
         lastUserIndex = i;
         break;
@@ -1226,8 +1143,8 @@ export function createContextOverflowRollover(deps: ContextOverflowRolloverDeps)
       lastUser = (await deps.findLatestUser?.(sessionId)) ?? undefined;
       lastUserIndex = -1;
     }
-    if (!lastUser) return false;
-    const rebuildReason: ContextRebuildReason = isPiPromptRpcTimeoutError(lastError)
+    if (!lastUser && !accountHandoff) return false;
+    const rebuildReason: ContextRebuildReason = accountHandoff ? 'native-session-recovery' : isPiPromptRpcTimeoutError(lastError)
       ? 'pi-prompt-timeout'
       : 'context-overflow';
     // 待发出/失败的 user 还会由本次 send 或 Retry 再 wire 一次，交接里不能带。
@@ -1251,13 +1168,13 @@ export function createContextOverflowRollover(deps: ContextOverflowRolloverDeps)
       toLabel: label,
       sessionId,
       reason: botChat || isOversizedHistoryErrorData(lastError) ? 'native-session-recovery' : rebuildReason,
-      includeToolResults: botChat || isOversizedHistoryErrorData(lastError),
+      includeToolResults: accountHandoff || botChat || isOversizedHistoryErrorData(lastError),
       companion: botChat,
       ...(await companionRecall(sessionId, botChat)),
     });
     await deps.commitRebuild(sessionId, handoff, {
       reason: rebuildReason,
-      sourceUserClientId: lastUser.clientId,
+      sourceUserClientId: lastUser?.clientId ?? null,
       sourceAgentKind: normalizeOverflowDbAgentKind(sessionRow.agentKind),
       sourceModel: sessionRow.model ?? null,
       sourceProviderId: sessionRow.providerId ?? null,
@@ -1269,9 +1186,7 @@ export function createContextOverflowRollover(deps: ContextOverflowRolloverDeps)
     deps.log.info('unhealthy native session rebuilt before send; skip compact/resume', {
       sessionId,
       reason: rebuildReason,
-      sourceUserClientId: lastUser.clientId,
-      nativeSessionBytes,
-      imagesInHistory: piImagesInHistory,
+      sourceUserClientId: lastUser?.clientId ?? null,
     });
     return true;
   };
@@ -1279,13 +1194,17 @@ export function createContextOverflowRollover(deps: ContextOverflowRolloverDeps)
   return {
     async prepareNativeSessionRecovery(sessionId, target, assertCanCommit, signal) {
       if (inFlight.has(sessionId)) throw new Error('Native session recovery is already in progress');
-      inFlight.set(sessionId, undefined);
+      const controller = target === 'retain-route' ? new AbortController() : undefined;
+      if (controller) signal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+      inFlight.set(sessionId, controller);
+      const assertReady = () => { signal?.throwIfAborted(); assertCanCommit(); };
       try {
         await deps.withCloseSuppressed(sessionId, async () => {
           await deps.drainPersistQueue();
           const row = await deps.getSessionRow(sessionId);
           if (!row || row.status === 'deleted' ||
-              (target ? (!row.sdkSessionId || row.remoteHostId) : (row.source !== 'bot' || row.status !== 'active'))) {
+              (target === 'retain-route' ? !!row.remoteHostId
+                : target ? (!row.sdkSessionId || row.remoteHostId) : (row.source !== 'bot' || row.status !== 'active'))) {
             throw new Error('Native session recovery source is unavailable');
           }
           const generation = deps.readPendingHandoffGeneration?.(sessionId);
@@ -1293,20 +1212,20 @@ export function createContextOverflowRollover(deps: ContextOverflowRolloverDeps)
           if (source.length === 0 && row.contextTokens !== 0) {
             throw new Error('Cindy history is unavailable for native session recovery');
           }
-          assertCanCommit();
+          assertReady();
           const live = deps.getLiveSession(sessionId);
-          if (target && live?.isTurnRunning()) {
-            throw new Error('Native session recovery cannot interrupt a running turn');
+          if (target && (live?.isTurnRunning() || (live?.listBackgroundTasks?.().length ?? 0) > 0)) {
+            throw new Error('Native session recovery cannot interrupt a running turn or background task');
           }
           // Manual restart closes the broken runtime without asking it to compact.
           if (live) await deps.closeSession(sessionId);
-          assertCanCommit();
+          assertReady();
           if (!target) {
             // Include any last output persisted while the old runtime was stopping.
             await deps.drainPersistQueue();
-            assertCanCommit();
+            assertReady();
             source = (await deps.listMessages(sessionId)).filter((message) => message.role !== 'error');
-            assertCanCommit();
+            assertReady();
           }
           // 显式重启(target=null)对伙伴的每段对话一视同仁: 主任务与 IM / 群专线按空闲间隔
           // 刷新同一口径写交接(isBotChatContext)。换路由恢复仍只认主任务。
@@ -1316,7 +1235,7 @@ export function createContextOverflowRollover(deps: ContextOverflowRolloverDeps)
             toLabel: engineLabelForOverflow(row.agentKind),
             sessionId,
             reason: 'native-session-recovery',
-            includeToolResults: !target || isCanonicalBotContext(row),
+            includeToolResults: !target || target === 'retain-route' || isCanonicalBotContext(row),
             companion: companionChat,
             ...(await companionRecall(sessionId, companionChat)),
           });
@@ -1329,8 +1248,9 @@ export function createContextOverflowRollover(deps: ContextOverflowRolloverDeps)
             sourceModel: row.model ?? null,
             sourceProviderId: row.providerId ?? null,
             expectedClearedAt: row.clearedAt,
-            ...(target ? { replacementRoute: { ...target, expectedSdkSessionId: row.sdkSessionId! } } : {}),
+            ...(target && target !== 'retain-route' ? { replacementRoute: { ...target, expectedSdkSessionId: row.sdkSessionId! } } : {}),
           }];
+          if (target === 'retain-route') assertReady();
           if (signal) commitArgs[3] = signal;
           await deps.commitRebuild(...commitArgs);
           deps.setPendingHandoff(sessionId, handoff, generation);

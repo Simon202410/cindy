@@ -23,6 +23,7 @@ import {
   Info,
   Layers,
   Plug,
+  Waypoints,
   RefreshCw,
   Target,
   X,
@@ -51,7 +52,6 @@ import {
   BotSessionTaskMessageTrace,
 } from '@/features/bots/BotCollaborationCard';
 import { BotDirectMessageCard } from '@/features/bots/BotDirectMessageCard';
-import { BotTaskExchangeCard } from '@/features/bots/BotTaskExchangeCard';
 import { VoiceCallCard, VoiceCallTaskEntry } from '@/features/bots/voice/VoiceCallTranscript';
 import { readVoiceCallRecord } from '@/../shared/voiceConversation';
 import {
@@ -92,7 +92,6 @@ interface SystemCardProps {
     | 'bot-session-task'
     | 'bot-session-task-result'
     | 'bot-direct-message'
-    | 'bot-task-exchange'
     | 'bot-authorization'
     | 'context-rebuild'
     | 'session-import';
@@ -886,7 +885,9 @@ function PluginModelRouteCard({ data }: { data?: Partial<PluginModelRouteNote> }
   const strong = (text: string) => <span className="font-medium text-[var(--text-secondary)]">{text}</span>;
   return (
     <div className="flex items-start gap-2 py-0.5 text-12 leading-[1.5] text-[var(--text-tertiary)]">
-      {data.outcome === 'routed' ? <Plug size={13} className="mt-[3px] shrink-0" aria-hidden /> : <Info size={13} className="mt-[3px] shrink-0" aria-hidden />}
+      {data.outcome !== 'routed' ? <Info size={13} className="mt-[3px] shrink-0" aria-hidden />
+        : data.source === 'model-group' ? <Waypoints size={13} className="mt-[3px] shrink-0" aria-hidden />
+        : <Plug size={13} className="mt-[3px] shrink-0" aria-hidden />}
       <span className="min-w-0">
         {data.outcome === 'routed' ? (
           <>
@@ -1603,8 +1604,6 @@ export function SystemCard({
       return <BotAuthorizationCardView data={data} sessionId={sessionId} />;
     case 'bot-direct-message':
       return <BotDirectMessageCard data={data} sessionId={sessionId} />;
-    case 'bot-task-exchange':
-      return <BotTaskExchangeCard data={data} sessionId={sessionId} workingDir={workingDir} />;
     case 'input-handoff': {
       const record = readInputHandoffRecordData(data);
       return record ? <InputHandoffRecordRow record={record} at={typeof data?.at === 'string' ? data.at : undefined} /> : null;

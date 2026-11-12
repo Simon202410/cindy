@@ -3,15 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { botProfileDir } from '../botProfileFolder.js';
-import {
-  canAssignTaskResponsibility,
-  collectTaskResponsibilityScopes,
-  readTaskResponsibilities,
-  responsibleSessionIds,
-  setTaskResponsibility,
-} from '../botTaskResponsibility.js';
-import { setBotAutonomyBotsChangedListener } from '../../bot-autonomy/botsChangedSignal.js';
-import { parseTaskPartnerRouteKey, readBotTaskExchangeMeta, taskPartnerRouteKey } from '../../../shared/botTaskExchange.js';
+import { collectTaskResponsibilityScopes, createdSessionIds, readTaskResponsibilities, responsibleSessionIds, setTaskResponsibility } from '../botTaskResponsibility.js';
 
 // Lock mechanics have their own cross-process suite; exercise this store's guarded write.
 vi.mock('../../device-link/crossProcessLock.js', () => ({
@@ -22,45 +14,6 @@ beforeEach(async () => { root = await fs.mkdtemp(path.join(os.tmpdir(), 'bot-tas
 afterEach(async () => { await fs.rm(root, { recursive: true, force: true }); });
 
 describe('task responsibility', () => {
-  it('projects only complete task exchange records into task cards', () => {
-    const exchange = {
-      v: 1,
-      bridgeId: 'bridge-1',
-      taskId: 'task-1',
-      botId: 'designer',
-      botName: '设计师',
-      direction: 'received',
-      text: '按钮层级已经整理好。',
-      status: 'replied',
-    } as const;
-    expect(readBotTaskExchangeMeta(exchange)).toEqual(exchange);
-    expect(readBotTaskExchangeMeta({ ...exchange, direction: 'forged' })).toBeNull();
-    expect(readBotTaskExchangeMeta({ ...exchange, taskId: '' })).toBeNull();
-    expect(readBotTaskExchangeMeta({ ...exchange, v: 2 })).toBeNull();
-    expect(parseTaskPartnerRouteKey(taskPartnerRouteKey('task-1'))).toBe('task-1');
-    expect(parseTaskPartnerRouteKey('dm-thread:main:root')).toBeNull();
-  });
-
-  it('assigns only an active local teammate to an ordinary active local task', () => {
-    const allowed = {
-      botStatus: 'active',
-      botHomeHere: true,
-      botShadowed: false,
-      task: { status: 'active', source: 'desktop', remoteHostId: null, orcaRole: null, botLinked: false },
-    };
-    expect(canAssignTaskResponsibility(allowed)).toBe(true);
-    expect(canAssignTaskResponsibility({ ...allowed, botStatus: 'paused' })).toBe(false);
-    expect(canAssignTaskResponsibility({ ...allowed, botHomeHere: false })).toBe(false);
-    expect(canAssignTaskResponsibility({ ...allowed, botShadowed: true })).toBe(false);
-    expect(canAssignTaskResponsibility({ ...allowed, task: null })).toBe(false);
-    expect(canAssignTaskResponsibility({ ...allowed, task: { ...allowed.task, status: 'archived' } })).toBe(false);
-    expect(canAssignTaskResponsibility({ ...allowed, task: { ...allowed.task, source: 'bot' } })).toBe(false);
-    expect(canAssignTaskResponsibility({ ...allowed, task: { ...allowed.task, source: 'shared' } })).toBe(false);
-    expect(canAssignTaskResponsibility({ ...allowed, task: { ...allowed.task, remoteHostId: 'ssh-host' } })).toBe(false);
-    expect(canAssignTaskResponsibility({ ...allowed, task: { ...allowed.task, orcaRole: 'worker' } })).toBe(false);
-    expect(canAssignTaskResponsibility({ ...allowed, task: { ...allowed.task, botLinked: true } })).toBe(false);
-  });
-
   it('uses only verified creation and explicit records; releases override creation across reads', async () => {
     expect(await readTaskResponsibilities(root, 'one')).toEqual({});
     await setTaskResponsibility(root, 'one', 'taken', true, () => {});
@@ -72,17 +25,15 @@ describe('task responsibility', () => {
     expect(await readTaskResponsibilities(root, 'two')).toEqual({});
     expect(await readTaskResponsibilities(root + '-other-owner', 'one')).toEqual({});
   });
-  // 依据：伙伴自主跟进的归属须在接手 / 解除后立即生效（cindy-bots-runtime.md §6.3.2）；缺口：写入成功后
-  // 观察层要等 60 秒定时重读。最小失败输入：一次成功接手、一次被拒的非法写入。tier：unit。
-  it('tells the autonomy layer to re-read ownership after a successful take or release only', async () => {
-    const changed = vi.fn();
-    setBotAutonomyBotsChangedListener(changed);
-    try {
-      await setTaskResponsibility(root, 'one', 'taken', true, () => {});
-      expect(changed).toHaveBeenCalledTimes(1);
-      await expect(setTaskResponsibility(root, 'one', '', true, () => {})).rejects.toThrow();
-      expect(changed).toHaveBeenCalledTimes(1);
-    } finally { setBotAutonomyBotsChangedListener(null); }
+  // 依据：用普通任务工具开的任务也是伙伴「开的」（项目模式不再走委派）；缺口：只记成接手，任务卡归属丢失。
+  // 最小失败输入：一次带 created 的写入后再解除。tier：unit。
+  it('remembers who opened a task even after it is released', async () => {
+    await setTaskResponsibility(root, 'one', 'opened', true, () => {}, { created: true });
+    await setTaskResponsibility(root, 'one', 'taken', true, () => {});
+    await setTaskResponsibility(root, 'one', 'opened', false, () => {});
+    const records = await readTaskResponsibilities(root, 'one');
+    expect(createdSessionIds(records)).toEqual(['opened']);
+    expect(responsibleSessionIds([], records)).toEqual(['taken']);
   });
   it('does not touch workbench judgments or Todo when taking or releasing', async () => {
     const home = botProfileDir(root, 'one');

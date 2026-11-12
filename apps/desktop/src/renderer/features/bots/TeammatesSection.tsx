@@ -28,7 +28,7 @@ import { SIDEBAR_LIST_ROW_ACTIVE_CLASS, SIDEBAR_LIST_ROW_HEIGHT_CLASS } from '@/
 import { useCollapsibleShowAll } from '@/features/cc-agent/sidebar/hooks/useCollapsibleShowAll';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog-provider';
 import { getDataOwnerGeneration, isDataOwnerGenerationCurrent } from '@/contexts/dataOwnerGeneration';
-import type { BotGroupSource, BotGroupSummary } from '../../../shared/botGroupChat';
+import type { BotGroupSummary } from '../../../shared/botGroupChat';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,7 +50,7 @@ import { BotCreateMenu } from './BotCreateMenu';
 import { BotDeleteDialog } from './BotDeleteDialog';
 import { BotGroupSidebarRow } from './BotGroupSidebarRow';
 import { BotGroupSidebarAvatar } from './BotGroupAvatars';
-import { refreshBotGroups, setBotGroupSource, useBotGroupList } from './botGroupStore';
+import { refreshBotGroups, useBotGroupList } from './botGroupStore';
 import { BOT_GROUP_SETTINGS_PARAM, botGroupActivityAt } from './botGroupPresentation';
 import { chatErrorKey } from './chatError';
 import { subscribeBotReadState, getBotLastReadAtMap, isBotGroupUnread } from './botReadState';
@@ -61,12 +61,7 @@ import {
   formatBotListTimestamp,
 } from './botListDisplay';
 import { botDeviceLabel, partitionBotRoster } from './botRosterDisplay';
-import {
-  readTeammatesGroupSource,
-  readTeammatesSectionCollapsed,
-  writeTeammatesGroupSource,
-  writeTeammatesSectionCollapsed,
-} from './teammatesSectionPrefs';
+import { readTeammatesSectionCollapsed, writeTeammatesSectionCollapsed } from './teammatesSectionPrefs';
 import {
   canonicalBotSessionId,
   duplicateBotProfile,
@@ -135,8 +130,6 @@ export function TeammatesSection() {
   const deviceId = remoteRoute?.params.deviceId;
   const selectedGroupId = matchPath('/bots/groups/:groupId', pathname)?.params.groupId;
   const [collapsed, setCollapsed] = useState(() => readTeammatesSectionCollapsed(dataOwnerId));
-  const [groupSource, setGroupSource] = useState<BotGroupSource>(() => readTeammatesGroupSource(dataOwnerId));
-  const [groupSourceBusy, setGroupSourceBusy] = useState(false);
   const [showAllChats, setShowAllChats] = useCollapsibleShowAll(collapsed);
   const avatarRowRef = useRef<HTMLDivElement>(null);
   const avatarCapacity = useAvatarRowCapacity(avatarRowRef, collapsed);
@@ -144,44 +137,10 @@ export function TeammatesSection() {
     setCollapsed(readTeammatesSectionCollapsed(dataOwnerId));
     setShowAllChats(false);
   }, [dataOwnerId, setShowAllChats]);
-  useEffect(() => {
-    const source = readTeammatesGroupSource(dataOwnerId);
-    const owner = getDataOwnerGeneration();
-    setGroupSource(source);
-    void setBotGroupSource(source).then(applied => {
-      if (!applied && isDataOwnerGenerationCurrent(owner)) {
-        setGroupSource('local');
-        writeTeammatesGroupSource(dataOwnerId, 'local');
-      }
-    }).catch(() => {
-      if (!isDataOwnerGenerationCurrent(owner)) return;
-      setGroupSource('local');
-      writeTeammatesGroupSource(dataOwnerId, 'local');
-    });
-  }, [dataOwnerId]);
   const toggleCollapsed = () => {
     const next = !collapsed;
     setCollapsed(next);
     writeTeammatesSectionCollapsed(dataOwnerId, next);
-  };
-  const changeGroupSource = async (online: boolean) => {
-    if (groupSourceBusy) return;
-    const previous = groupSource;
-    const next: BotGroupSource = online ? 'server' : 'local';
-    const owner = getDataOwnerGeneration();
-    setGroupSourceBusy(true);
-    setGroupSource(next);
-    writeTeammatesGroupSource(dataOwnerId, next);
-    try {
-      if (!await setBotGroupSource(next)) throw new Error('GROUP_SOURCE_UNAVAILABLE');
-      if (selectedGroupId) navigate('/bots');
-    } catch {
-      if (!isDataOwnerGenerationCurrent(owner)) return;
-      setGroupSource(previous);
-      writeTeammatesGroupSource(dataOwnerId, previous);
-    } finally {
-      if (isDataOwnerGenerationCurrent(owner)) setGroupSourceBusy(false);
-    }
   };
   const cloud = useCompanionCloud();
   const rosterRemoteBots = useRemoteBots();
@@ -553,38 +512,6 @@ export function TeammatesSection() {
               </button>
             </span>
           ) : null}
-          <span className={HEADER_HOVER_ACTION_CLASS}>
-            <Tip text={t('bots.list.groupSource.toggle')} side="bottom">
-              <button
-                type="button"
-                role="switch"
-                aria-checked={groupSource === 'server'}
-                aria-label={t('bots.list.groupSource.toggle')}
-                disabled={groupSourceBusy}
-                onClick={() => void changeGroupSource(groupSource !== 'server')}
-                className={cn(HEADER_ICON_BUTTON_CLASS, 'disabled:cursor-not-allowed disabled:opacity-50')}
-              >
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    'relative flex h-3 w-5 items-center rounded-full transition-colors',
-                    groupSource === 'server'
-                      ? 'bg-[var(--switch-track-on)]'
-                      : 'bg-[var(--switch-track-off)]',
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'absolute left-0.5 h-2 w-2 rounded-full transition-transform',
-                      groupSource === 'server'
-                        ? 'translate-x-2 bg-[var(--switch-thumb-on)]'
-                        : 'translate-x-0 bg-[var(--switch-thumb-off)]',
-                    )}
-                  />
-                </span>
-              </button>
-            </Tip>
-          </span>
           <BotCreateMenu variant="header" />
         </div>
       </div>
