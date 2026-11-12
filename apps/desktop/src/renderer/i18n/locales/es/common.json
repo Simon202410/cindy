@@ -9786,6 +9786,8 @@
         "maximizeAria": "Maximizar barra lateral",
         "restoreAria": "Restaurar barra lateral",
         "closeAria": "Cerrar barra lateral",
+        "persistentHint": "Haz clic para abrir o cerrar; mantén 2 segundos para dejar el panel siempre abierto",
+        "persistentHintActive": "Haz clic para abrir o cerrar; el panel queda abierto — mantén 2 segundos para desactivarlo",
         "detachAria": "Abrir la pestaña actual en una ventana nueva"
       },
       "contextMenu": {

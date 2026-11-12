@@ -9670,6 +9670,8 @@
         "maximizeAria": "側欄極展",
         "restoreAria": "復其原狀",
         "closeAria": "闔側欄",
+        "persistentHint": "點則啟闔；按二秒則常展",
+        "persistentHintActive": "點則啟闔；已常展，再按二秒則罷",
         "detachAria": "以獨窗啟此分頁"
       },
       "contextMenu": {

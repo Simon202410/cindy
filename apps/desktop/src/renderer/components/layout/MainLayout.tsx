@@ -20,8 +20,6 @@ import { rightSidebarOwnsRailChromeActions as resolveRightSidebarRailChromeActio
 import { FadeSwitcher } from '@/components/layout/FadeSwitcher';
 import { RightSidebar, type RightSidebarHandle } from '@/components/layout/RightSidebar';
 import { RightSidebarToggle } from '@/components/layout/RightSidebarToggle';
-import { Switch } from '@/components/ui/switch';
-import { Tip } from '@/components/ui/tooltip';
 import { Sidebar } from '@/components/sidebar/Sidebar';
 import { getSplitSessionIds, useSplitGroup } from '@/features/cc-agent/splitGroupStore';
 import { LayoutRoot } from '@/layout/LayoutRoot';
@@ -324,6 +322,8 @@ export function MainLayout() {
   // 右侧边栏(第三块布局,与左栏对称)：折叠态 + 宽度各自持久化。
   const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(getInitialRightCollapsed);
   const [defaultRightSidebarOpen, setDefaultRightSidebarOpen] = useState(readDefaultRightSidebarOpen);
+  const defaultRightSidebarOpenRef = useRef(defaultRightSidebarOpen);
+  defaultRightSidebarOpenRef.current = defaultRightSidebarOpen;
   // 「侧边栏在新窗口中显示」偏好 + 子窗口开闭(main 权威,广播镜像)。
   // 副窗(会话多开窗)不参与 detach:内嵌行为保持不变,只有主窗联动子窗口
   // (main 侧 SET_CONTEXT 也只信主窗 sender,双保险)。
@@ -374,13 +374,13 @@ export function MainLayout() {
       const hasInitialCollapsed = typeof opts.initialCollapsed === 'boolean';
       const nextCollapsed = hasInitialCollapsed
         ? opts.initialCollapsed === true
-        : readCollapsedFor(sessionId, defaultRightSidebarOpen);
+        : readCollapsedFor(sessionId, defaultRightSidebarOpenRef.current);
       setIsRightSidebarCollapsed(nextCollapsed);
       if (hasInitialCollapsed && opts.writeInitialCollapsedRecord === true) {
         writeCollapsedFor(sessionId, nextCollapsed);
       }
     },
-    [defaultRightSidebarOpen, rsbDetached, rsbWindow.loaded],
+    [rsbDetached, rsbWindow.loaded],
   );
   // 当前 cc-agent session 的 workingDir + remote 归属 —— 同 sessionId 由 CCAgentSessionView
   // 主实例推上来,给 RightSidebar plugin(file-browser)做 useFileTree / useFileContent 入参。
@@ -977,10 +977,12 @@ export function MainLayout() {
     if (rsbDetached) return;
     const sessionId = rightSidebarSessionIdRef.current;
     if (sessionId == null) return;
+    // 常驻面板关掉最后一个页签时回到空状态，让用户继续从「开始一个面板」添加。
+    if (isMac && defaultRightSidebarOpenRef.current) return;
     rightSidebarRef.current?.requestAnimateNextChange();
     setIsRightSidebarCollapsed(true);
     writeCollapsedFor(sessionId, true);
-  }, [rsbDetached]);
+  }, [isMac, rsbDetached]);
 
   // 分离侧栏合并回主窗时，main 先转发不可持久化 session 的 tab 快照，
   // 再广播 detached=false 让这里重挂内嵌 Shell。快照必须在 cache invalidation
@@ -992,22 +994,30 @@ export function MainLayout() {
     });
   }, []);
 
-  const handleDefaultRightSidebarOpenChange = useCallback((checked: boolean) => {
+  const toggleDefaultRightSidebarOpen = useCallback(() => {
+    const next = !defaultRightSidebarOpenRef.current;
     try {
-      if (checked) localStorage.removeItem(RIGHT_SIDEBAR_DEFAULT_OPEN_KEY);
+      if (next) localStorage.removeItem(RIGHT_SIDEBAR_DEFAULT_OPEN_KEY);
       else localStorage.setItem(RIGHT_SIDEBAR_DEFAULT_OPEN_KEY, 'false');
     } catch {
       log.warn('persist default right sidebar visibility failed');
     }
-    setDefaultRightSidebarOpen(checked);
-  }, []);
+    defaultRightSidebarOpenRef.current = next;
+    setDefaultRightSidebarOpen(next);
+    if (next && !rsbDetached) {
+      rightSidebarRef.current?.requestAnimateNextChange();
+      setIsRightSidebarCollapsed(false);
+    }
+  }, [rsbDetached]);
 
   // sessionId 切换时按平台偏好刷新折叠态。无需 prime 动画 —— RightSidebar 默认
   // 直接同步,切 session "瞬间生效"(用户体感:不应看着一栏慢慢展开/收起)。
   useLayoutEffect(() => {
     if (!rsbWindow.loaded || !rightSidebarSessionId || rsbDetached) return;
-    setIsRightSidebarCollapsed(readCollapsedFor(rightSidebarSessionId, defaultRightSidebarOpen));
-  }, [defaultRightSidebarOpen, rightSidebarSessionId, rsbDetached, rsbWindow.loaded]);
+    setIsRightSidebarCollapsed(
+      readCollapsedFor(rightSidebarSessionId, defaultRightSidebarOpenRef.current),
+    );
+  }, [rightSidebarSessionId, rsbDetached, rsbWindow.loaded]);
 
   // 监听"右侧栏可见性"信号 —— Phase 5 RsbWebviewBackend 触发(rsbBrowserBridge
   // .handleTabOpRequest):open/focus → 'open',close 最后一个 tab → 'close'。
@@ -1918,21 +1928,16 @@ export function MainLayout() {
                 {isMac && rightSidebarAvailable && rsbWindow.loaded && (
                   <div
                     data-testid="right-sidebar-fixed-trigger"
-                    className="absolute right-0 top-0 z-50 flex h-[46px] items-center gap-2 pr-2"
+                    className="absolute right-0 top-0 z-50 flex h-[46px] items-center pr-2"
                     style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                   >
-                    <Tip text={t('contentHeader.defaultOpenPanel')} side="bottom">
-                      <Switch
-                        checked={defaultRightSidebarOpen}
-                        onCheckedChange={handleDefaultRightSidebarOpenChange}
-                        aria-label={t('contentHeader.defaultOpenPanel')}
-                      />
-                    </Tip>
                     <RightSidebarToggle
                       action="toggle"
                       collapsed={rsbDetached ? !rsbWindow.open : isRightSidebarCollapsed}
                       onToggle={handleToggleRightSidebar}
                       side={rightSidebarSide}
+                      onLongPress={toggleDefaultRightSidebarOpen}
+                      persistent={defaultRightSidebarOpen}
                     />
                   </div>
                 )}

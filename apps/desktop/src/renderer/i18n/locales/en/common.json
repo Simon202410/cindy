@@ -9713,6 +9713,8 @@
         "maximizeAria": "Maximize sidebar",
         "restoreAria": "Restore sidebar",
         "closeAria": "Close sidebar",
+        "persistentHint": "Click to open or close; hold for 2 seconds to keep the panel open",
+        "persistentHintActive": "Click to open or close; panel stays open — hold for 2 seconds to turn off",
         "detachAria": "Open the current tab in a new window"
       },
       "contextMenu": {

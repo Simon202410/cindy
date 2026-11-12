@@ -50,12 +50,12 @@ export function useIsContentHeaderHidden(): boolean {
 const WIN_CONTROLS_WIDTH = 138;
 
 /**
- * mac 右栏固定操作宽度占位（偏好开关 36 + 间距 8 + 按钮 28 + 右距 8）。按钮已 hoist 到 MainLayout
+ * mac 右栏固定唤起按钮宽度占位（按钮 28 + 右距 8）。按钮已 hoist 到 MainLayout
  * 顶层浮层（钉窗口右上角，见
  * MainLayout 的 mac 浮层），这里同 Windows 一样在右端留等宽占位，防止注入的
  * header 内容滑到浮动开关下面。
  */
-const MAC_RIGHT_TOGGLE_WIDTH = 80;
+const MAC_RIGHT_TOGGLE_WIDTH = 36;
 
 /**
  * "空 header 隐藏"判定(用户决策 2026-06-11)的单一决策源:MainLayout 与 ContentHeader
