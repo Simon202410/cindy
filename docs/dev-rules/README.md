@@ -37,6 +37,7 @@
 | Settings、配置文件、偏好、运行时 profile 与能力开关 | [配置与 override](configuration-and-overrides.md) |
 | workdir、Agent 进程、任务数据、IPC／推送与断链恢复 | [远程与手机适配](remote-and-mobile-adaptation.md) |
 | 托管 worktree、提交、PR、直推、review、项目知识归属与文档整理原则 | [开发工作流](development-workflow.md) |
+| 把上游 `upstream/main` 合进 `local/custom-main`、机械冲突策略与 rerere | [上游同步](upstream-sync.md) |
 
 ## 可选的开发者高级工具
 
