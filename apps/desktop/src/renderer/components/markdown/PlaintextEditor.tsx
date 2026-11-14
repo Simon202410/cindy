@@ -77,6 +77,7 @@ import {
   markdownDarkEditorTheme,
 } from './codemirrorGithubTheme';
 import { getCodeMirrorLanguage } from './codemirrorLanguages';
+import { diffLineHighlight, isDiffLanguage } from './codemirrorDiffLines';
 import {
   clamp,
   findMarkdownTableAtLine,
@@ -1644,6 +1645,8 @@ export const PlaintextEditor = forwardRef<PlaintextEditorHandle, PlaintextEditor
         ...(initialConfig.useCodeChrome ? [hexColorPreviewPlugin] : []),
         ...(initialConfig.useCodeChrome ? [gitChangedLinesField] : []),
         ...highlightExtensions,
+        // .diff/.patch rows keep their red/green fill even when highlighting is skipped.
+        ...(isDiffLanguage(initialConfig.language) ? [diffLineHighlight] : []),
         ...(initialConfig.isMarkdown
           ? [
               // 命中集合先于表格 decoration 挂上:markdownTableDecorationField

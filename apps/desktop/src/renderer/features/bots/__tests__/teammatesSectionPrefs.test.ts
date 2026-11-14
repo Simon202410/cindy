@@ -2,10 +2,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
-  readTeammatesGroupSource,
   readTeammatesSectionCollapsed,
-  writeTeammatesGroupSource,
+  readTeammatesViewMode,
   writeTeammatesSectionCollapsed,
+  writeTeammatesViewMode,
 } from '../teammatesSectionPrefs';
 
 beforeEach(() => localStorage.clear());
@@ -32,18 +32,13 @@ describe('teammates section collapse preference', () => {
   });
 });
 
-describe('teammates section group source preference', () => {
-  it('defaults to local and keeps server mode separate per account', () => {
-    expect(readTeammatesGroupSource('owner-a')).toBe('local');
-    writeTeammatesGroupSource('owner-a', 'server');
-    expect(readTeammatesGroupSource('owner-a')).toBe('server');
-    expect(readTeammatesGroupSource('owner-b')).toBe('local');
-  });
-
-  it('treats unknown stored values as local and does not persist without an account', () => {
-    localStorage.setItem('sidebar.teammatesSection.groupSource.v1.owner.owner-a', 'online');
-    expect(readTeammatesGroupSource('owner-a')).toBe('local');
-    writeTeammatesGroupSource(null, 'server');
-    expect(readTeammatesGroupSource(null)).toBe('local');
-  });
+// Display preference was previously inseparable from collapse. Keep account isolation
+// and collapse independent at the production persistence boundary (unit tier).
+it('stores icon mode independently from collapse and other accounts', () => {
+  writeTeammatesViewMode('owner-a', 'icons');
+  writeTeammatesSectionCollapsed('owner-a', true);
+  expect(readTeammatesViewMode('owner-a')).toBe('icons');
+  expect(readTeammatesViewMode('owner-b')).toBe('list');
+  writeTeammatesSectionCollapsed('owner-a', false);
+  expect(readTeammatesViewMode('owner-a')).toBe('icons');
 });
