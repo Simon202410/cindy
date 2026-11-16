@@ -386,6 +386,26 @@ pnpm test:unit
 菜单栏项。该检查属于原生集成层，独立于默认单测池，需在 macOS 上手动执行，未接入 CI。
 脚本分别输出编译与测试耗时；Windows/Linux 不支持运行，不能将其计为通过。
 
+## 本机打 macOS 安装包
+
+要一个能装的本机包时用固定命令，不要现场拼 `package-desktop` 参数再手挂 dmg：
+
+```bash
+pnpm package:mac                      # arm64 + global + 版本无关(0.0.0)
+pnpm package:mac --arch x64
+pnpm package:mac --version 0.1.140    # 有版本：Developer ID + 公证，需要 APPLE_APP_PASSWORD
+pnpm package:mac --no-copy            # 只留在 artifacts，不拷到 ~/Downloads
+```
+
+`scripts/package-mac.mjs` 做四件事：调 `apps/desktop/scripts/package-desktop.mjs` 真正构建与
+签名（含 packaged smoke test）；版本无关构建只出 zip，脚本在 `.app` 同级补做 dmg（app +
+`/Applications` 软链）；`hdiutil verify` 并挂载自检 bundle id／版本／签名方式；按
+`cindy-<版本|unversioned>-<arch>-<YYYYMMDD>.dmg` 拷到输出目录，最后打印产物路径、大小、
+sha256、提交号与签名。
+
+它刻意不做：push、发布、上传 CDN、改版本号、跑单测或 typecheck。工作区有未提交改动时照打，
+但会先把「会被打进这个包」的改动清单打印出来，别把 HEAD 提交号当成包内容的准确描述。
+
 ## 单页 UI 快速验证
 
 `pnpm ui:check` 只编译被改的真实 renderer 组件，在一个隔离的 Electron 窗口（与 Cindy 同一

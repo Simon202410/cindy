@@ -89,6 +89,7 @@
     "check:built-in-skills": "node scripts/check-built-in-skills.mjs",
     "check:test-hygiene": "node scripts/check-test-hygiene.mjs",
     "sync:upstream": "node scripts/sync-upstream.mjs",
+    "package:mac": "node scripts/package-mac.mjs",
     "check:dco": "node scripts/check-dco.mjs",
     "dco:install-hook": "node scripts/install-dco-hook.mjs",
     "licenses:generate": "node scripts/generate-third-party-notices.mjs",
