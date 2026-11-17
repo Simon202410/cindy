@@ -9586,6 +9586,9 @@ export function ChatInput({
           )}
         </div>
       )}
+      {pluginUiCandidates.header && !remoteHostId && !deviceLinkDeviceId && (
+        <PluginUiSlot position="composer.header" sessionId={sessionId} />
+      )}
       {/* When the pending-queue panel is visible, the wrapper div owns the
           border + corner radius + focus-within highlight. Both inner halves
           (panel + input card) become borderless sections, so a focus on the
