@@ -31,7 +31,6 @@ export type BuiltinTabKindId =
   | 'orca-workers'
   | 'subagents'
   | 'side-chat'
-  | 'task-partner'
   | 'background-tasks'
   | 'resource-usage'
   | 'cindy-make'

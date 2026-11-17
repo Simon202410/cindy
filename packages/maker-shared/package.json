@@ -119,7 +119,6 @@
     "./botGroupChat": "./src/botGroupChat.ts",
     "./botGroupMentions": "./src/botGroupMentions.ts",
     "./botGroupPresentation": "./src/botGroupPresentation.ts",
-    "./groupWorkbench": "./src/groupWorkbench.ts",
     "./botDelegation": "./src/botDelegation.ts",
     "./bot-deliverable": "./src/botDeliverable.ts",
     "./botTimeline": "./src/botTimeline.ts",
