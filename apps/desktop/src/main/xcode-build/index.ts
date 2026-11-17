@@ -466,15 +466,23 @@ export class XcodeBuildManager {
 
   async start(request: XcodeBuildStartRequest & { ownerId: number }): Promise<XcodeBuildState> {
     const normalizedWorkdir = path.resolve(request.workdir);
-    if (
-      [...this.records.values()].some(
-        (record) =>
-          record.ownerId === request.ownerId &&
-          record.state.workdir === normalizedWorkdir &&
-          record.state.status === 'running',
-      )
-    ) {
-      throwIpcError('PRECONDITION_FAILED', 'an Xcode build is already running');
+    const active = [...this.records.values()].find(
+      (record) =>
+        record.ownerId === request.ownerId &&
+        record.state.workdir === normalizedWorkdir &&
+        record.state.status === 'running',
+    );
+    if (active) {
+      // 原生 iOS/Android 产物启动后没有热重载通道(Flutter 才有),所以再点「编译」
+      // 的语义是「重新编译并安装」:允许顶掉已启动的旧记录,先按「停止」同样方式
+      // 结束旧 App 进程,再走一遍 build/install/launch。构建/安装/启动中的运行
+      // 仍然拒绝并发。
+      if (active.state.phase !== 'launched' || active.flutterProcess) {
+        throwIpcError('PRECONDITION_FAILED', 'an Xcode build is already running');
+      }
+      await this.terminateLaunchedApp(active);
+      this.appendOutput(active, 'Replaced by a new build.\n');
+      this.finish(active, null, 'cancelled');
     }
 
     const projects = await findXcodeContainers(normalizedWorkdir, this.deps);
@@ -546,6 +554,16 @@ export class XcodeBuildManager {
       return;
     }
 
+    await this.terminateLaunchedApp(record);
+    this.finish(record, null, 'cancelled');
+  }
+
+  /**
+   * 终止已启动 App 的进程(模拟器走 simctl terminate,真机走 devicectl)。
+   * 「停止」和「已启动状态下的重新编译」共用:后者必须先把旧进程结束掉,
+   * 否则重新 install/launch 会和正在运行的实例抢同一个 bundle。
+   */
+  private async terminateLaunchedApp(record: BuildRecord): Promise<void> {
     try {
       if (record.destinationPlatform === 'iOS Simulator' && record.bundleId) {
         await this.deps.execFile(
@@ -572,7 +590,6 @@ export class XcodeBuildManager {
     } catch (error) {
       this.appendOutput(record, `Could not confirm app termination: ${commandErrorMessage(error)}\n`);
     }
-    this.finish(record, null, 'cancelled');
   }
 
   async flutterAction(
@@ -601,12 +618,18 @@ export class XcodeBuildManager {
 
   status(workdir: string, ownerId: number): XcodeBuildStatusResult {
     const normalizedWorkdir = path.resolve(workdir);
+    // 同一 workdir 的记录取最新一条;startedAt 相同时(同一毫秒内重新编译)按插入
+    // 顺序取后写入的那条,否则会读到刚被顶掉的旧记录。
     const record = [...this.records.values()]
       .filter(
         (candidate) =>
           candidate.ownerId === ownerId && candidate.state.workdir === normalizedWorkdir,
       )
-      .sort((a, b) => b.state.startedAt - a.state.startedAt)[0];
+      .reduce<BuildRecord | null>(
+        (latest, candidate) =>
+          !latest || candidate.state.startedAt >= latest.state.startedAt ? candidate : latest,
+        null,
+      );
     return record
       ? { state: { ...record.state }, output: record.output }
       : { state: null, output: '' };

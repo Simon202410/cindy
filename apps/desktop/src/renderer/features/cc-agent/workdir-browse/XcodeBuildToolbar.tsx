@@ -36,11 +36,20 @@ const TOOLBAR_BUTTON_CLASS =
 export function XcodeBuildToolbar({ xcode }: { xcode: UseXcodeBuildReturn }) {
   const { t } = useTranslation();
   const running = xcode.build?.status === 'running';
-  const canBuild = Boolean(
-    !running && !xcode.loading && xcode.selectedScheme && xcode.selectedDestination,
-  );
   const canHotAction = Boolean(
     running && xcode.build?.phase === 'launched' && xcode.build.supportsHotReload,
+  );
+  // 原生 iOS/Android 产物启动后没有热重载通道(只有 Flutter 有),此时再点编译
+  // 的语义是「重新编译并安装」:主进程会先结束已启动的旧进程再重跑 build/install/launch。
+  // 没有这一条时,原生 App 一旦启动就只剩「停止」可点,编译按钮永久禁用。
+  const canRelaunch = Boolean(
+    running && xcode.build?.phase === 'launched' && !xcode.build.supportsHotReload,
+  );
+  const canBuild = Boolean(
+    !xcode.loading &&
+      xcode.selectedScheme &&
+      xcode.selectedDestination &&
+      (!running || canRelaunch),
   );
   const selectedProject = xcode.projects.find(
     (project) => project.containerPath === xcode.selectedContainerPath,

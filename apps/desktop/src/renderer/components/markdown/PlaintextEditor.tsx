@@ -110,7 +110,7 @@ import {
 } from './docSearchRanges';
 import { computeFenceLineRoles, type FenceLineRole } from './markdownFenceLines';
 import { bindHexColorSwatch, destroyHexColorPicker } from './hexColorPicker';
-import { findHexColors, getPlaintextEditorChrome } from './plaintextEditorChrome';
+import { colorToCssHex, findHexColors, getPlaintextEditorChrome } from './plaintextEditorChrome';
 import { useIsDarkMode } from './useIsDarkMode';
 
 export interface PlaintextEditorSearchHandle {
@@ -413,8 +413,8 @@ class HexColorWidget extends WidgetType {
   toDOM(view: EditorView): HTMLElement {
     const span = document.createElement('span');
     span.className = 'cm-hex-color-swatch';
-    // 色块展示的是文档里的颜色值，不是主题 token。
-    span.style.backgroundColor = this.color;
+    // 色块展示的是文档里的颜色值(可能是 `0x3E4450`),不是主题 token。
+    span.style.backgroundColor = colorToCssHex(this.color) ?? 'transparent';
     span.dataset.color = this.color;
     span.setAttribute('aria-label', this.color);
     bindHexColorSwatch(span, view);
@@ -426,7 +426,7 @@ class HexColorWidget extends WidgetType {
   }
 
   updateDOM(dom: HTMLElement): boolean {
-    dom.style.backgroundColor = this.color;
+    dom.style.backgroundColor = colorToCssHex(this.color) ?? 'transparent';
     dom.dataset.color = this.color;
     dom.setAttribute('aria-label', this.color);
     return true;

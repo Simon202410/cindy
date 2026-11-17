@@ -239,6 +239,71 @@ Available destinations for the "Recipes" scheme:
     );
   });
 
+  it('rebuilds and reinstalls when the native app is already launched', async () => {
+    // 原生(iOS)App 启动后没有热重载通道,记录会一直停在 running/launched;
+    // 此时再点「编译」必须能结束旧进程并重新 build/install/launch,而不是报冲突。
+    const execFile = vi.fn(async (_command: string, args: readonly string[]) => {
+      if (args.includes('-showBuildSettings')) {
+        return { stdout: buildSettings('com.example.recipes', '/build/Recipes.app'), stderr: '' };
+      }
+      if (args[0] === 'simctl' && args[1] === 'launch') {
+        return { stdout: 'com.example.recipes: 42\n', stderr: '' };
+      }
+      return { stdout: '', stderr: '' };
+    });
+    let sequence = 0;
+    const manager = new XcodeBuildManager({
+      dependencies: managerDependencies({
+        execFile,
+        createBuildId: () => `build-${(sequence += 1)}`,
+      }),
+      emit: vi.fn(),
+    });
+    const request = {
+      sessionId: 'session-1',
+      ownerId: 7,
+      workdir: '/repo',
+      containerPath: 'ios/Recipes.xcworkspace',
+      containerKind: 'workspace' as const,
+      scheme: 'Recipes',
+      destinationId: 'SIM-1',
+      destinationPlatform: 'iOS Simulator',
+      destinationName: 'iPhone 16 Pro',
+      destinationOsVersion: '18.2',
+    };
+
+    await manager.start(request);
+    await vi.waitFor(() => {
+      expect(manager.status('/repo', 7).state?.phase).toBe('launched');
+    });
+    execFile.mockClear();
+
+    const rebuilt = await manager.start(request);
+    expect(rebuilt).toMatchObject({ buildId: 'build-2', status: 'running', phase: 'building' });
+    await vi.waitFor(() => {
+      expect(manager.status('/repo', 7).state).toMatchObject({
+        buildId: 'build-2',
+        status: 'running',
+        phase: 'launched',
+      });
+    });
+    expect(execFile).toHaveBeenCalledWith(
+      '/usr/bin/xcrun',
+      ['simctl', 'terminate', 'SIM-1', 'com.example.recipes'],
+      expect.any(Object),
+    );
+    expect(execFile).toHaveBeenCalledWith(
+      '/usr/bin/xcrun',
+      expect.arrayContaining(['xcodebuild', 'build']),
+      expect.any(Object),
+    );
+    expect(execFile).toHaveBeenCalledWith(
+      '/usr/bin/xcrun',
+      ['simctl', 'install', 'SIM-1', '/build/Recipes.app'],
+      expect.any(Object),
+    );
+  });
+
   it('uses the Debug app bundle reported by Xcode build settings', () => {
     expect(parseXcodeAppBuildSettings(buildSettings('com.example.recipes', '/build/Recipes.app')))
       .toEqual({

@@ -1,6 +1,15 @@
 import { EditorView } from '@codemirror/view';
 
-import { formatHexColor, hsvToRgb, parseHexColor, rgbToHsv } from './plaintextEditorChrome';
+import {
+  formatColorToken,
+  formatHexColor,
+  hexColorStyle,
+  hsvToRgb,
+  isUppercaseToken,
+  parseHexColor,
+  rgbToHsv,
+  type HexColorStyle,
+} from './plaintextEditorChrome';
 
 const HIDE_DELAY_MS = 160;
 const PICKER_GAP = 8;
@@ -66,6 +75,8 @@ class HexColorPickerController {
   private hideTimer: number | null = null;
   private flushFrame: number | null = null;
   private pendingHex: string | null = null;
+  /** 面板打开时文档里那段文字的原样写法，比如 `0x3E4450`。 */
+  private documentToken = '';
   private documentHex = '';
   private currentHex = '';
   private hue = 0;
@@ -73,7 +84,7 @@ class HexColorPickerController {
   private value = 0;
   private alpha = 255;
   private hasAlpha = false;
-  private uppercase = false;
+  private tokenStyle: HexColorStyle = { prefix: '#', uppercase: false, shorthand: false };
 
   constructor(private readonly view: EditorView) {
     this.panel.hidden = true;
@@ -105,7 +116,7 @@ class HexColorPickerController {
     this.nativeInput.addEventListener('change', () => this.commitPending());
     this.hexInput.addEventListener('input', () => {
       const raw = this.hexInput.value.trim();
-      const next = raw.startsWith('#') ? raw : `#${raw}`;
+      const next = /^0[xX]/.test(raw) || raw.startsWith('#') ? raw : `#${raw}`;
       const parsed = parseHexColor(next);
       this.hexInput.setAttribute('aria-invalid', parsed ? 'false' : 'true');
       if (parsed) this.applyHex(next, 'hex');
@@ -179,7 +190,8 @@ class HexColorPickerController {
   open(anchor: HTMLElement, pinned: boolean): void {
     const raw = anchor.dataset.color;
     const parsed = raw ? parseHexColor(raw) : null;
-    if (!raw || !parsed) return;
+    const style = raw ? hexColorStyle(raw) : null;
+    if (!raw || !parsed || !style) return;
     this.cancelScheduledClose();
     if (this.anchor && this.anchor !== anchor) {
       this.anchor.setAttribute('aria-expanded', 'false');
@@ -187,9 +199,10 @@ class HexColorPickerController {
     this.anchor = anchor;
     anchor.setAttribute('aria-expanded', 'true');
     this.pinned = this.pinned || pinned;
-    this.documentHex = raw.startsWith('#') ? raw : `#${raw}`;
+    this.documentToken = raw.trim();
+    this.tokenStyle = style;
+    this.documentHex = formatHexColor(parsed, style.uppercase);
     this.currentHex = this.documentHex;
-    this.uppercase = /[A-F]/.test(this.documentHex.slice(1));
     this.alpha = parsed.a;
     this.hasAlpha = parsed.hasAlpha;
     const hsv = rgbToHsv(parsed.r, parsed.g, parsed.b);
@@ -199,7 +212,7 @@ class HexColorPickerController {
     this.panel.dataset.readonly = String(!this.isEditable());
     this.nativeInput.disabled = !this.isEditable();
     this.hexInput.readOnly = !this.isEditable();
-    this.hexInput.value = this.currentHex;
+    this.hexInput.value = this.documentToken;
     this.hexInput.setAttribute('aria-invalid', 'false');
     this.renderPicker();
     this.panel.hidden = false;
@@ -300,31 +313,36 @@ class HexColorPickerController {
 
   private applyRgb(r: number, g: number, b: number, commit = true): void {
     this.applyHex(
-      formatHexColor({ r, g, b, a: this.alpha, hasAlpha: this.hasAlpha }, this.uppercase),
+      formatHexColor(
+        { r, g, b, a: this.alpha, hasAlpha: this.hasAlpha },
+        this.tokenStyle.uppercase,
+      ),
       'control',
       commit,
     );
   }
 
-  private applyHex(
-    nextHex: string,
-    source: 'hex' | 'control',
-    commit = true,
-  ): void {
+  private applyHex(nextHex: string, source: 'hex' | 'control', commit = true): void {
     const parsed = parseHexColor(nextHex);
     if (!parsed || !this.isEditable()) return;
-    this.currentHex = nextHex;
+    this.tokenStyle.uppercase = isUppercaseToken(nextHex);
+    this.currentHex = formatHexColor(parsed, this.tokenStyle.uppercase);
     this.alpha = parsed.a;
     this.hasAlpha = parsed.hasAlpha;
-    this.uppercase = /[A-F]/.test(nextHex.slice(1));
     const hsv = rgbToHsv(parsed.r, parsed.g, parsed.b);
     this.hue = hsv.h;
     this.saturation = hsv.s;
     this.value = hsv.v;
-    if (source !== 'hex') this.hexInput.value = nextHex;
+    if (source !== 'hex') this.hexInput.value = this.displayToken(this.currentHex);
     this.renderPicker();
-    if (commit) this.queueDocumentChange(nextHex);
-    else this.stageColor(nextHex);
+    if (commit) this.queueDocumentChange(this.currentHex);
+    else this.stageColor(this.currentHex);
+  }
+
+  /** 按打开时的写法（`#` / `0x`、大小写、简写）生成写回文档的那段文字。 */
+  private displayToken(hex: string): string {
+    const parsed = parseHexColor(hex);
+    return parsed ? formatColorToken(parsed, this.tokenStyle) : hex;
   }
 
   private renderPicker(): void {
@@ -349,8 +367,9 @@ class HexColorPickerController {
     });
     this.anchor?.style.setProperty('background-color', this.currentHex);
     if (this.anchor) {
-      this.anchor.dataset.color = this.currentHex;
-      this.anchor.setAttribute('aria-label', this.currentHex);
+      const token = this.displayToken(this.currentHex);
+      this.anchor.dataset.color = token;
+      this.anchor.setAttribute('aria-label', token);
     }
   }
 
@@ -379,14 +398,16 @@ class HexColorPickerController {
     if (!nextHex || !this.anchor || !this.isEditable()) return;
     try {
       const from = this.view.posAtDOM(this.anchor);
-      const current = this.view.state.doc.sliceString(from, from + this.documentHex.length);
+      const current = this.view.state.doc.sliceString(from, from + this.documentToken.length);
       if (!parseHexColor(current)) return;
-      if (current !== nextHex) {
+      const insert = this.displayToken(nextHex);
+      if (current !== insert) {
         this.view.dispatch({
-          changes: { from, to: from + current.length, insert: nextHex },
+          changes: { from, to: from + current.length, insert },
           userEvent: 'input',
         });
       }
+      this.documentToken = insert;
       this.documentHex = nextHex;
     } catch {
       this.close();

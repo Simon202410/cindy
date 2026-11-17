@@ -206,7 +206,7 @@ export function RightSidebarToggle({
           <span
             aria-hidden
             data-testid="right-sidebar-persistent-indicator"
-            className="absolute bottom-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-[var(--status-bar-accent)]"
+            className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-current"
           />
         )}
       </button>
