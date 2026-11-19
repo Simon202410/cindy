@@ -238,6 +238,7 @@ import {
   pooledCodexResetTarget,
   hasRestoredPooledCodexQuota,
 } from '../runtime.js';
+import { AccountServiceUnreachableError } from '../accountServiceError.js';
 import { createCodexRateLimitResetService } from '../../usage/codexRateLimitReset.js';
 import { CodexResetAutoUse, DEFAULT_CODEX_RESET_AUTO_USE } from '../../usage/codexResetAutoUse.js';
 import { providerGroupMemberUsageState, providerGroupCodexUsageFromReads, providerGroupUsageSnapshot } from '../../provider-group/usage.js';
@@ -5119,6 +5120,30 @@ describe('native account assignment on the executing computer', () => {
     expect(start).toHaveBeenCalledExactlyOnceWith(options);
     expect(h.read).not.toHaveBeenCalled();
   });
+  // #10301 回归(系统账号已登录 + 旧任务用内部 codex-home + symlink EPERM)。这条链路上
+  // lazy create 抛的是「凭证连不上」而不是「没登录」,恢复入口(到模型供应商里重新连接)
+  // 依赖这个 reason 一路活着到界面。这里同时钉住两件事:旧路由的隔离策略不被绕过(不注入
+  // 账号),以及这个 reason 不被 AgentStartupStoppedError 的包装吃掉 —— 少任何一条,
+  // 用户看到的就是一句没有出路的「回复未完成」。
+  it('keeps the shared-link reason on a legacy-home resume instead of falling back to another account', async () => {
+    h.pools.openai = { strategy: 'round', accounts: [account('default'), account('second')] };
+    const start = vi.fn(async (_options: StartSessionOptions): Promise<never> => {
+      throw new AgentNotAuthenticatedError('codex', 'codex not authenticated: codex_shared_auth_link_unavailable');
+    });
+    const agent = withSubscriptionAccounts({
+      kind: 'codex',
+      startSession: start,
+    } as unknown as BaseAgent, { getState: h.legacyRead, resolveCodexHistoryHome: async () => '/unregistered-private-home' });
+    const options = {
+      providerId: 'openai',
+      resumeSessionId: 'legacy',
+      sessionId: 'old-task',
+    } as StartSessionOptions;
+    await expect(agent.startSession(options)).rejects.toThrow('codex_shared_auth_link_unavailable');
+    // 旧路由照旧不注入账号:恢复走「重新连接」,不是换一个账号池里的账号。
+    expect(start).toHaveBeenCalledExactlyOnceWith(options);
+    expect(start.mock.calls[0]![0][NATIVE_SUBSCRIPTION_ACCOUNT]).toBeUndefined();
+  });
 });
 
 // #10692: existing disabled-account cases persist task/native bindings first. These unit
@@ -5682,6 +5707,46 @@ describe('shared subscription recovery through controller and account allocation
       resolveProbe?.();
       for (const client of clients) client.abandon('test-finished');
       await host.dispose();
+    }
+  });
+});
+
+// 2026-11-18 user report, unit: the router returned a wrong address for chatgpt.com, so every
+// Codex account read timed out while the login on disk was valid. The account looked signed out,
+// and signing in again failed before the browser opened. Existing login cases use reads that
+// answer or fail without a cause. Minimal input: the native account read rejects as unreachable.
+describe('unreachable account service', () => {
+  const unreachable = () => new AccountServiceUnreachableError('Codex account request failed');
+
+  // The sign-in still has to be confirmed (登录完成须确认, 2026-11-16): an offline confirmation is
+  // not a completed login, but it must say the service was unreachable instead of a generic failure.
+  it('still opens the browser login for a known account and reports an unconfirmed result as unreachable', async () => {
+    h.pools.openai = { strategy: 'least', accounts: [account('default'), account('second')] };
+    h.read.mockRejectedValue(unreachable());
+    await expect(runSubscriptionAccountCommand({ action: 'login', providerId: 'openai', accountId: 'second', loginKey: 'offline' }))
+      .rejects.toBeInstanceOf(AccountServiceUnreachableError);
+    expect(h.login).toHaveBeenCalledWith('openai', 'openai/second', expect.any(AbortSignal));
+    expect((await readSubscriptionPool('openai')).accounts.find((entry) => entry.id === 'second')?.status).toBe('unavailable');
+  });
+
+  it('keeps the last identity while unreadable and announces the change both ways', async () => {
+    h.pools.openai = { strategy: 'least', accounts: [account('default')] };
+    h.read.mockResolvedValue({ authenticated: true, identity: 'kept@example.test' });
+    await refreshSubscriptionPool('openai', true);
+    const events: string[] = [];
+    const off = onSubscriptionAccountsChanged((provider) => events.push(provider));
+    try {
+      h.read.mockRejectedValue(unreachable());
+      expect((await refreshSubscriptionPool('openai', true)).accounts[0])
+        .toMatchObject({ status: 'unavailable', identity: 'kept@example.test' });
+      expect(events).toEqual(['openai']);
+      await refreshSubscriptionPool('openai', true);
+      expect(events).toEqual(['openai']);
+      h.read.mockResolvedValue({ authenticated: true, identity: 'kept@example.test' });
+      expect((await refreshSubscriptionPool('openai', true)).accounts[0].status).toBe('ready');
+      expect(events).toEqual(['openai', 'openai']);
+    } finally {
+      off();
     }
   });
 });
