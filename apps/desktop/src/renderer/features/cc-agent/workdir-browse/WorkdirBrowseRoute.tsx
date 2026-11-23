@@ -198,7 +198,8 @@ function WorkdirBrowseContent({ requestedDeviceId }: { requestedDeviceId: string
   });
   const changedLines = selectedPath ? gitChanges.changedLines.get(selectedPath) : undefined;
   useEffect(() => {
-    if (content.kind === 'text') gitChanges.scheduleRefresh();
+    // 上游的 useFileContent 在未选中文件时返回 null，这里要判空。
+    if (content?.kind === 'text') gitChanges.scheduleRefresh();
   }, [content, gitChanges.scheduleRefresh]);
   useEffect(() => {
     const onReverted = (event: Event) => {
