@@ -1,7 +1,7 @@
 # Host 通道覆盖清单（脚本生成）
 
 > 由 `node scripts/host-channel-coverage.mjs` 生成，不要手工修改；行号只在 `--json` 输出里。
-> 生成时的源码提交：`9e098a937a`。归属规则见下方「归属规则」，正本在脚本的 `OWNERSHIP_RULES`。
+> 生成时的源码提交：`353c88c9e6`。归属规则见下方「归属规则」，正本在脚本的 `OWNERSHIP_RULES`。
 
 统计对象是桌面主进程（`apps/desktop/src/main`，不含测试）里所有 `ipcMain.handle/on`
 及其包装函数注册的通道；注册、调用次数和排行均按 `(kind, channel)` 区分。
@@ -10,15 +10,15 @@
 
 ## 总口径
 
-**真正要 Host 做的 = A + C-后台 + C-两段式 = 941 + 32 + 50 = 1023**；巡检实际调用到 **131** 个（666 次，其中 A 129）。
+**真正要 Host 做的 = A + C-后台 + C-两段式 = 953 + 32 + 50 = 1035**；巡检实际调用到 **131** 个（666 次，其中 A 129）。
 同步通道（S）与回执通道（R）已单列，不在 A 里；C-窗口本地与 C-专项设计不计入。
 
 | 分类 | 含义 | 通道数 |
 |---|---|---:|
 | contract | 已在 Host 通道合同或通用路由登记表里，窗口做客户端时转发给 Host | 84（巡检调用 35） |
 | client | 客户端模式自己的通道（连接状态、重连） | 2（巡检调用 1） |
-| **A** | 必须由后台处理：读写后台持有的数据或运行状态 | 941（巡检调用 128） |
-| **B** | 永久留在窗口：只能在 Electron／图形界面里做 | 363（巡检调用 70） |
+| **A** | 必须由后台处理：读写后台持有的数据或运行状态 | 953（巡检调用 128） |
+| **B** | 永久留在窗口：只能在 Electron／图形界面里做 | 364（巡检调用 70） |
 | **W** | 窗口本地设置：窗口直接读写同一份 profile，不经 Host | 5（巡检调用 1） |
 | **S** | 同步通道（给 `event.returnValue` 赋值）：不能转发给 Host | 14（巡检调用 11） |
 | 　S·本地 | 同步·本地（窗口读 profile：界面设置与首帧提示） | 8（巡检调用 8） |
@@ -29,12 +29,12 @@
 | 　C-两段式（窗口做界面动作，数据调 Host） | | 50（巡检调用 0） |
 | 　C-窗口本地 | | 11（巡检调用 2） |
 | 　C-专项设计（安全边界） | | 4（巡检调用 0） |
-| 合计 | | 1512 |
+| 合计 | | 1525 |
 
 **窗口类**（B + W + S·本地 + C-窗口本地）在客户端模式下：
-已注册 **373**（其中 10 个只有源码判定，客户端快照里还没有）、未注册 **0**（今天被拒或无人监听，见下文）、快照无法判断 14。
+已注册 **373**（其中 10 个只有源码判定，客户端快照里还没有）、未注册 **0**（今天被拒或无人监听，见下文）、快照无法判断 15。
 
-判定依据：A:default 131、A:rule 810、B:rule 363、C:dependency 27、C:rule 70、R:rule 6、S:dependency 14、W:rule 5（rule = 规则表，dependency = 窗口 API 或同步返回值判定，default = 未登记前缀且没用窗口 API）。
+判定依据：A:default 137、A:rule 816、B:rule 364、C:dependency 27、C:rule 70、R:rule 6、S:dependency 14、W:rule 5（rule = 规则表，dependency = 窗口 API 或同步返回值判定，default = 未登记前缀且没用窗口 API）。
 
 合同一侧（`hostChannelContract.ts`、`host-delegation.ts`、客户端模式预取、Host 通用路由的登记表 `hostIpcEntries/`）的通道名全部静态解析：解析不出任何一个时脚本直接失败，不会生成本清单。
 
@@ -102,10 +102,10 @@
 | 1 | 伙伴与 IM | 137 | 22 | 128 | im 60、maker-ipc 40、localDb 28 |
 | 2 | 任务、消息与输入队列 | 115 | 17 | 123 | maker-ipc 71、localDb 27、bootstrap-electron 12 |
 | 3 | 插件、技能与 MCP | 151 | 16 | 93 | cindy-brain 56、skillhub 41、plugin-market 19 |
-| 4 | 供应商与模型 | 80 | 14 | 79 | maker-ipc 52、local-model-runtime 19、bootstrap-electron 4 |
-| 5 | git 与工作树 | 66 | 9 | 75 | git-context 22、git-review 21、worktree 13 |
-| 6 | 设备互联与远程执行 | 72 | 7 | 66 | device-link 38、remote-ssh 29、bootstrap-electron 4 |
-| 7 | 未登记前缀 | 134 | 17 | 29 | maker-ipc 58、billing 26、bootstrap-electron 25 |
+| 4 | 供应商与模型 | 81 | 14 | 79 | maker-ipc 52、local-model-runtime 19、bootstrap-electron 4 |
+| 5 | git 与工作树 | 69 | 9 | 75 | git-review 24、git-context 22、worktree 13 |
+| 6 | 设备互联与远程执行 | 74 | 7 | 66 | device-link 40、remote-ssh 29、bootstrap-electron 4 |
+| 7 | 未登记前缀 | 140 | 17 | 29 | maker-ipc 58、billing 26、bootstrap-electron 25 |
 | 8 | 记忆、学习与钩子 | 42 | 4 | 24 | hook-control 27、learn-host 6、maker-ipc 6 |
 | 9 | 账号与凭据 | 40 | 4 | 17 | bootstrap-electron 30、device-link 7、subscription-accounts 2 |
 | 10 | 设置与偏好 | 34 | 9 | 15 | bootstrap-electron 9、appearance-settings-ipc 8、maker-ipc 6 |
@@ -407,10 +407,10 @@ C-后台：换窗口时不能断、网页和手机也要用，计入要 Host 做
 |---|---:|
 | 窗口本地照常处理 | 363 |
 | 窗口本地照常处理（源码判定：客户端分支调用其注册函数；客户端快照早于这次改动，未实测） | 10 |
-| 两次快照都未注册（按需注册或未走到） | 12 |
+| 两次快照都未注册（按需注册或未走到） | 13 |
 | 注册在插件页面的 webContents.ipc 上，主进程快照不覆盖 | 2 |
 
-快照无法判断的窗口类通道（14）：`ghost-page:cancel-model-picker`（注册在插件页面的 webContents.ipc 上，主进程快照不覆盖）、`ghost-page:pick-model`（注册在插件页面的 webContents.ipc 上，主进程快照不覆盖）、`app-locale:preference`（两次快照都未注册（按需注册或未走到））、`local-network:request`（两次快照都未注册（按需注册或未走到））、`local-network:status`（两次快照都未注册（按需注册或未走到））、`live-screen-embed:channel-reply`（两次快照都未注册（按需注册或未走到））、`live-screen-embed:close`（两次快照都未注册（按需注册或未走到））、`live-screen-embed:ice`（两次快照都未注册（按需注册或未走到））、`live-screen-embed:open`（两次快照都未注册（按需注册或未走到））、`live-screen-embed:request`（两次快照都未注册（按需注册或未走到））、`live-screen-relay:frame`（两次快照都未注册（按需注册或未走到））、`live-screen-relay:host`（两次快照都未注册（按需注册或未走到））、`live-screen-relay:state`（两次快照都未注册（按需注册或未走到））、`rsb-browser-bridge:report-file-preview-opener`（两次快照都未注册（按需注册或未走到））
+快照无法判断的窗口类通道（15）：`agent-island:task-activity`（两次快照都未注册（按需注册或未走到））、`ghost-page:cancel-model-picker`（注册在插件页面的 webContents.ipc 上，主进程快照不覆盖）、`ghost-page:pick-model`（注册在插件页面的 webContents.ipc 上，主进程快照不覆盖）、`app-locale:preference`（两次快照都未注册（按需注册或未走到））、`local-network:request`（两次快照都未注册（按需注册或未走到））、`local-network:status`（两次快照都未注册（按需注册或未走到））、`live-screen-embed:channel-reply`（两次快照都未注册（按需注册或未走到））、`live-screen-embed:close`（两次快照都未注册（按需注册或未走到））、`live-screen-embed:ice`（两次快照都未注册（按需注册或未走到））、`live-screen-embed:open`（两次快照都未注册（按需注册或未走到））、`live-screen-embed:request`（两次快照都未注册（按需注册或未走到））、`live-screen-relay:frame`（两次快照都未注册（按需注册或未走到））、`live-screen-relay:host`（两次快照都未注册（按需注册或未走到））、`live-screen-relay:state`（两次快照都未注册（按需注册或未走到））、`rsb-browser-bridge:report-file-preview-opener`（两次快照都未注册（按需注册或未走到））
 
 ## 按注册模块
 
@@ -421,13 +421,13 @@ C-后台：换窗口时不能断、网页和手机也要用，计入要 Host 做
 | im | 0 | 60 | 0 | 0 | 0 | 0 | 1 | 61 |
 | localDb | 30 | 58 | 1 | 0 | 0 | 0 | 4 | 93 |
 | cindy-brain | 7 | 49 | 2 | 0 | 6 | 0 | 8 | 72 |
-| device-link | 0 | 46 | 0 | 0 | 0 | 0 | 4 | 50 |
+| device-link | 0 | 48 | 0 | 0 | 0 | 0 | 4 | 52 |
 | skillhub | 0 | 40 | 0 | 0 | 0 | 0 | 2 | 42 |
 | remote-ssh | 0 | 28 | 0 | 0 | 0 | 0 | 1 | 29 |
 | hook-control | 0 | 27 | 0 | 0 | 0 | 0 | 0 | 27 |
 | billing | 0 | 26 | 0 | 0 | 0 | 0 | 2 | 28 |
+| git-review | 0 | 23 | 0 | 0 | 0 | 0 | 1 | 24 |
 | git-context | 0 | 22 | 0 | 0 | 0 | 0 | 0 | 22 |
-| git-review | 0 | 20 | 0 | 0 | 0 | 0 | 1 | 21 |
 | local-model-runtime | 0 | 19 | 0 | 0 | 0 | 0 | 0 | 19 |
 | plugin-market | 0 | 19 | 0 | 0 | 0 | 0 | 1 | 20 |
 | plugin-contributions | 0 | 13 | 0 | 0 | 0 | 0 | 0 | 13 |
@@ -438,6 +438,7 @@ C-后台：换窗口时不能断、网页和手机也要用，计入要 Host 做
 | plugin-publisher | 0 | 5 | 0 | 0 | 0 | 0 | 0 | 5 |
 | session-import | 0 | 5 | 0 | 0 | 0 | 0 | 0 | 5 |
 | wecomGroupNotification | 0 | 5 | 0 | 0 | 0 | 0 | 0 | 5 |
+| xcode-build | 0 | 5 | 0 | 0 | 0 | 0 | 0 | 5 |
 | analyticsSettingsService | 0 | 4 | 0 | 0 | 0 | 0 | 0 | 4 |
 | appearance-settings-ipc | 2 | 4 | 0 | 0 | 1 | 0 | 4 | 11 |
 | app-shortcuts | 0 | 3 | 1 | 0 | 1 | 0 | 0 | 5 |
@@ -452,14 +453,16 @@ C-后台：换窗口时不能断、网页和手机也要用，计入要 Host 做
 | cindy-files | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 |
 | commands | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 |
 | local-agent | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 |
+| mcp-apps | 0 | 1 | 0 | 0 | 0 | 0 | 1 | 2 |
 | model-access | 2 | 1 | 0 | 0 | 0 | 0 | 0 | 3 |
 | provider-group | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 |
 | quota-overview | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 |
 | settingsNavigationIpc | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 |
 | task-management | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 |
 | task-migration | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 |
+| utility-model | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 |
 | accessibility-support-ipc | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
-| agent-island | 0 | 0 | 15 | 0 | 0 | 0 | 0 | 15 |
+| agent-island | 0 | 0 | 16 | 0 | 0 | 0 | 0 | 16 |
 | app-settings | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 1 |
 | appBadgeService | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 3 |
 | clientEndpointsService | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 1 |
@@ -473,7 +476,6 @@ C-后台：换窗口时不能断、网页和手机也要用，计入要 Host 做
 | log-upload | 0 | 0 | 4 | 0 | 0 | 0 | 0 | 4 |
 | login-item-ipc | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 2 |
 | maker-host | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
-| mcp-apps | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 1 |
 | mcp-integrations | 8 | 0 | 1 | 0 | 0 | 0 | 0 | 9 |
 | menubar | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 2 |
 | notificationService | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 2 |
@@ -521,6 +523,7 @@ C-后台：换窗口时不能断、网页和手机也要用，计入要 Host 做
 | `agent-island:set-sound-settings` | invoke | B（窗口外壳、窗口布局与多窗口） | 1 | `agent-island/service.ts` |
 | `agent-island:set-subtle-reminders` | invoke | B（窗口外壳、窗口布局与多窗口） | 1 | `agent-island/service.ts` |
 | `agent-island:set-visible-session` | invoke | B（窗口外壳、窗口布局与多窗口） | 72 | `agent-island/service.ts` |
+| `agent-island:task-activity` | invoke | B（窗口外壳、窗口布局与多窗口） | 0 | `agent-island/service.ts` |
 
 ### analyticsSettingsService
 
@@ -946,6 +949,7 @@ C-后台：换窗口时不能断、网页和手机也要用，计入要 Host 做
 | 通道 | 类型 | 归属 | 调用次数 | 注册文件 |
 |---|---|---|---:|---|
 | `device-link:close-link` | invoke | A（设备互联与远程执行） | 0 | `device-link/ipc.ts` |
+| `device-link:cloud-computer-entry` | invoke | A（设备互联与远程执行） | 0 | `device-link/ipc.ts` |
 | `device-link:confirm-skill-mutation` | invoke | C-两段式（窗口做界面动作，数据调 Host）（设备互联与远程执行，但处理函数用到窗口 API：BrowserWindow.fromWebContents、dialog；窗口做界面动作，数据那一半调 Host） | 0 | `device-link/ipc.ts` |
 | `device-link:delete-device` | invoke | A（设备互联与远程执行） | 0 | `device-link/ipc.ts` |
 | `device-link:disconnect-all` | invoke | A（设备互联与远程执行） | 0 | `device-link/ipc.ts` |
@@ -970,6 +974,7 @@ C-后台：换窗口时不能断、网页和手机也要用，计入要 Host 做
 | `device-link:set-device-control-enabled` | invoke | A（设备互联与远程执行） | 0 | `device-link/ipc.ts` |
 | `device-link:set-enabled` | invoke | A（设备互联与远程执行） | 0 | `device-link/ipc.ts` |
 | `device-link:set-keep-awake` | invoke | A（设备互联与远程执行） | 0 | `device-link/ipc.ts` |
+| `device-link:set-peer-path-preference` | invoke | A（设备互联与远程执行） | 0 | `device-link/ipc.ts` |
 | `device-link:topic-subscribe` | invoke | A（设备互联与远程执行） | 0 | `device-link/ipc.ts` |
 | `device-link:topic-unsubscribe` | invoke | A（设备互联与远程执行） | 0 | `device-link/ipc.ts` |
 | `direct-link:host:event` | invoke | A（设备互联与远程执行） | 0 | `device-link/directLink.ts` |
@@ -1073,15 +1078,18 @@ C-后台：换窗口时不能断、网页和手机也要用，计入要 Host 做
 | `git-review:branch-diff` | invoke | A（git 与工作树） | 0 | `git-review/ipc.ts` |
 | `git-review:commit` | invoke | A（git 与工作树） | 0 | `git-review/ipc.ts` |
 | `git-review:commit-diff` | invoke | A（git 与工作树） | 0 | `git-review/ipc.ts` |
+| `git-review:commit-message` | invoke | A（git 与工作树） | 0 | `git-review/ipc.ts` |
 | `git-review:commits` | invoke | A（git 与工作树） | 0 | `git-review/ipc.ts` |
 | `git-review:discard-all` | invoke | A（git 与工作树） | 0 | `git-review/ipc.ts` |
 | `git-review:discard-file` | invoke | A（git 与工作树） | 0 | `git-review/ipc.ts` |
 | `git-review:discard-hunk` | invoke | A（git 与工作树） | 0 | `git-review/ipc.ts` |
 | `git-review:file-diff` | invoke | A（git 与工作树） | 0 | `git-review/ipc.ts` |
 | `git-review:get` | invoke | A（git 与工作树） | 0 | `git-review/ipc.ts` |
+| `git-review:history` | invoke | A（git 与工作树） | 0 | `git-review/ipc.ts` |
 | `git-review:image-preview` | invoke | A（git 与工作树） | 0 | `git-review/ipc.ts` |
 | `git-review:markdown-preview` | invoke | A（git 与工作树） | 0 | `git-review/ipc.ts` |
 | `git-review:open-file` | invoke | C-两段式（窗口做界面动作，数据调 Host）（git 与工作树，但处理函数用到窗口 API：shell；窗口做界面动作，数据那一半调 Host） | 0 | `git-review/ipc.ts` |
+| `git-review:pull` | invoke | A（git 与工作树） | 0 | `git-review/ipc.ts` |
 | `git-review:push` | invoke | A（git 与工作树） | 0 | `git-review/ipc.ts` |
 | `git-review:remote-op` | invoke | A（git 与工作树） | 0 | `git-review/device-op.ts` |
 | `git-review:stage-all` | invoke | A（git 与工作树） | 0 | `git-review/ipc.ts` |
@@ -1760,6 +1768,7 @@ C-后台：换窗口时不能断、网页和手机也要用，计入要 Host 做
 | 通道 | 类型 | 归属 | 调用次数 | 注册文件 |
 |---|---|---|---:|---|
 | `maker:mcp-apps:v1` | invoke | C-两段式（窗口做界面动作，数据调 Host）（插件、技能与 MCP，但处理函数用到窗口 API：BrowserWindow.fromWebContents、shell；窗口做界面动作，数据那一半调 Host） | 0 | `mcp-apps/ipc.ts` |
+| `maker:redeem-composer-attachment-drag` | invoke | A（未登记前缀，处理函数没有用到窗口 API） | 0 | `mcp-apps/ipc.ts` |
 
 ### mcp-integrations
 
@@ -2245,6 +2254,12 @@ C-后台：换窗口时不能断、网页和手机也要用，计入要 Host 做
 | `update-relaunch-auto` | invoke | B（桌面安装包自身：更新、版本、日志与诊断） | 0 | `updateService.ts` |
 | `update-set-relaunch-theme` | event | B（桌面安装包自身：更新、版本、日志与诊断） | 5 | `updateService.ts` |
 
+### utility-model
+
+| 通道 | 类型 | 归属 | 调用次数 | 注册文件 |
+|---|---|---|---:|---|
+| `maker:auxiliary-model-health:get` | invoke | A（供应商与模型） | 0 | `utility-model/auxiliaryModelHealthService.ts` |
+
 ### voice-conversation
 
 | 通道 | 类型 | 归属 | 调用次数 | 注册文件 |
@@ -2392,3 +2407,13 @@ C-后台：换窗口时不能断、网页和手机也要用，计入要 Host 做
 | `xbox-gamepad:reset-settings` | invoke | B（本机输入设备与语音） | 0 | `xbox-gamepad/index.ts` |
 | `xbox-gamepad:set-layout-preview` | invoke | B（本机输入设备与语音） | 0 | `xbox-gamepad/index.ts` |
 | `xbox-gamepad:set-settings` | invoke | B（本机输入设备与语音） | 0 | `xbox-gamepad/index.ts` |
+
+### xcode-build
+
+| 通道 | 类型 | 归属 | 调用次数 | 注册文件 |
+|---|---|---|---:|---|
+| `xcode-build:discover` | invoke | A（未登记前缀，处理函数没有用到窗口 API） | 0 | `xcode-build/index.ts` |
+| `xcode-build:flutter-action` | invoke | A（未登记前缀，处理函数没有用到窗口 API） | 0 | `xcode-build/index.ts` |
+| `xcode-build:start` | invoke | A（未登记前缀，处理函数没有用到窗口 API） | 0 | `xcode-build/index.ts` |
+| `xcode-build:status` | invoke | A（未登记前缀，处理函数没有用到窗口 API） | 0 | `xcode-build/index.ts` |
+| `xcode-build:stop` | invoke | A（未登记前缀，处理函数没有用到窗口 API） | 0 | `xcode-build/index.ts` |

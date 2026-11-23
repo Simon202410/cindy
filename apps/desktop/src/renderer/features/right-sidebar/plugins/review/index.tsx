@@ -56,6 +56,8 @@ export interface ReviewState {
   richMarkdownPreview: boolean;
   /** 最近选择的分支比较基线；切到其它来源或消息快照后仍保留。 */
   branchBaseRef: string | null;
+  /** 外部入口指定的提交可能不在当前分支的审查范围,显式打开时不要回退来源。 */
+  commitSourcePinned: boolean;
 }
 
 const DEFAULT_STATE: ReviewState = {
@@ -70,6 +72,7 @@ const DEFAULT_STATE: ReviewState = {
   hideWhitespace: false,
   richMarkdownPreview: true,
   branchBaseRef: null,
+  commitSourcePinned: false,
 };
 
 function ReviewTabPillTitle({ t }: { state: ReviewState; t: TFunction }) {
@@ -150,6 +153,7 @@ const plugin: TabKindPlugin<ReviewState> = {
       hideWhitespace,
       richMarkdownPreview,
       branchBaseRef,
+      commitSourcePinned: false,
     };
   },
   onBeforeClose: (state, { sessionId }) => {
