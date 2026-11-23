@@ -1,8 +1,12 @@
+import { Tip } from '@/components/ui/tooltip';
+import { useDocumentVisible } from '@/hooks/useWindowVisible';
+import { isWindowHidden } from '@/lib/hiddenAnimationGate';
 import { Button } from '@/components/ui/button';
 /**
  * FileBrowserBody — file-browser plugin 的 TabBody 实现。
  *
- * 视觉(对设计稿 F2 双 Pane 镜像版,2026-06-30 用户要求左右换):
+ * 中间展示当前目录或文件。项目树可单独收起；窄栏展开时排在内容上方。
+ * 宽栏展开后的布局:
  *   ┌─────────────────────────────────┬───────────┐
  *   │  Body                           │  Tree     │
  *   │ (flex-1, FileBodyView)          │ (resizable) │
@@ -29,11 +33,11 @@ import { Button } from '@/components/ui/button';
  * singleton 拿当前 dirty 状态,跟 doc 模式行为一致。
  */
 
-import { openHtmlFileByPreference } from '@/components/chat/messageLinkActions';
+import { isHtmlFilePath, openHtmlFileByPreference } from '@/components/chat/messageLinkActions';
 import { resolveSessionFileOrigin } from '@/lib/sessionFileOrigin';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FolderX } from 'lucide-react';
+import { ArrowLeft, FolderTree, FolderX } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isGlobalDropIntercepted } from '@/lib/globalDropIntercept';
 import { useFileBrowserPreference } from '@/hooks/useFileBrowserPreference';
@@ -56,22 +60,22 @@ import {
 import { useFileContent } from '@/features/cc-agent/workdir-browse/hooks/useFileContent';
 import { useConfirmSwitchAwayIfDirty } from '@/features/cc-agent/workdir-browse/hooks/useConfirmSwitchAwayIfDirty';
 import { useProjectFileList } from '@/features/cc-agent/workdir-browse/hooks/useProjectFileList';
-import { useWorkdirGitChanges } from '@/features/cc-agent/workdir-browse/hooks/useWorkdirGitChanges';
 import { useRevealFileInTree } from '@/features/cc-agent/workdir-browse/hooks/useRevealFileInTree';
-import { useXcodeBuild } from '@/features/cc-agent/workdir-browse/hooks/useXcodeBuild';
-import { XcodeBuildToolbar } from '@/features/cc-agent/workdir-browse/XcodeBuildToolbar';
-import { XcodeBuildOutput } from '@/features/cc-agent/workdir-browse/XcodeBuildOutput';
 import { SearchPanel } from '@/features/cc-agent/workdir-browse/search/SearchPanel';
 import { FileTreeHeaderActions } from '@/features/cc-agent/workdir-browse/FileTreeHeaderActions';
 import { useProjectSearch } from '@/features/cc-agent/workdir-browse/search/hooks/useProjectSearch';
 import { FileFilterInput } from '@/features/cc-agent/workdir-browse/FileFilterInput';
 import { ChangedFilesList } from '@/features/cc-agent/workdir-browse/ChangedFilesList';
+import { useWorkdirGitChanges } from '@/features/cc-agent/workdir-browse/hooks/useWorkdirGitChanges';
+import { useXcodeBuild } from '@/features/cc-agent/workdir-browse/hooks/useXcodeBuild';
+import { XcodeBuildToolbar } from '@/features/cc-agent/workdir-browse/XcodeBuildToolbar';
+import { XcodeBuildOutput } from '@/features/cc-agent/workdir-browse/XcodeBuildOutput';
 import { FilterResultList } from '@/features/cc-agent/workdir-browse/FilterResultList';
 import {
   FILTER_RESULT_LIMIT,
   filterFiles,
 } from '@/features/cc-agent/workdir-browse/lib/filterFiles';
-import { toOsAbsolutePath } from '@/features/cc-agent/workdir-browse/lib/fileMeta';
+import { basename, dirname, toOsAbsolutePath } from '@/features/cc-agent/workdir-browse/lib/fileMeta';
 import { addTab, ensureHydrated } from '@/features/right-sidebar/store';
 import { toWorkdirRel } from '../../../../../shared/workdirPath';
 
@@ -100,12 +104,12 @@ type TreeMode = 'tree' | 'search';
 // CodeMirror padding / max-width override —— 让嵌入式版 FileBodyView 在窄栏里
 // 内容真正贴边,不被 doc 模式那套阅读舒适 padding(72px + max-w 920px)挤到中间。
 import './FileBrowserBody.css';
+import { InlineHtmlPreview } from './InlineHtmlPreview';
+import { DirectoryContents } from './DirectoryContents';
 
 /** body 至少要留给 FileBodyView 的最小可视宽度。tree 在 DOM 末尾、容器 overflow-hidden,
  *  RSB 缩小后如不给 body 留底,tree 会被从右边缘切掉(2026-07-01 用户实测 bug:
  *  左栏展开 → RSB pixel 宽按 fraction 缩 → tree 被切看着像"自动折叠")。 */
-const BODY_MIN_RESERVE = 100;
-
 function firstLineInSet(lines: ReadonlySet<number> | undefined): number | null {
   let first: number | null = null;
   for (const line of lines ?? []) {
@@ -114,21 +118,24 @@ function firstLineInSet(lines: ReadonlySet<number> | undefined): number | null {
   return first;
 }
 
+const BODY_MIN_RESERVE = 280;
+
 interface FileBrowserBodyProps {
   state: FileBrowserState;
   ctx: TabKindHostContext;
-  /** 宿主 tab 是否激活（PluginBodyHost 传入）。只用于文件树滚动位置的恢复时机；
-   *  隐藏 tab 的行渲染由虚拟化的 0 视口自然跳过，不需要门控。 */
+  /** 宿主标签页激活时恢复树的滚动位置。可见的 HTML 预览同时接收刷新和快捷键。 */
   active?: boolean;
+  shellVisible?: boolean;
 }
 
-export function FileBrowserBody({ state, ctx, active }: FileBrowserBodyProps) {
+export function FileBrowserBody(props: FileBrowserBodyProps) {
+  const { ctx } = props;
   const { workdir } = ctx;
   if (!workdir) {
     return <NoWorkdirPlaceholder />;
   }
   return (
-    <FileBrowserBodyWithWorkdir state={state} ctx={ctx} workdir={workdir} active={active} />
+    <FileBrowserBodyWithWorkdir key={JSON.stringify([ctx.sessionId, workdir, ctx.remoteHostId])} {...props} workdir={workdir} />
   );
 }
 
@@ -142,6 +149,7 @@ function FileBrowserBodyWithWorkdir({
   ctx,
   workdir,
   active,
+  shellVisible,
 }: FileBrowserBodyProps & { workdir: string }) {
   const { t } = useTranslation();
   // 会话归属三路:local / SSH(remoteHostId)/ device-link(deviceId)。
@@ -149,28 +157,43 @@ function FileBrowserBodyWithWorkdir({
   // 首渲染,见 useRemoteMediaUrl 同款处理);嵌套(device-link 会话自带
   // remoteHostId)时 deviceId 优先——SSH 二跳由被控端 device-op 处理,控制端
   // 不能把被控端的 hostId 发给自己的 main。
-  const deviceId = useSyncExternalStore(remoteProjectsStore.subscribe, () =>
+  const registeredDeviceId = useSyncExternalStore(remoteProjectsStore.subscribe, () =>
     ctx.sessionId ? getSessionDeviceId(ctx.sessionId) ?? null : null,
   );
+  const deviceId = ctx.deviceLinkDeviceId !== undefined ? ctx.deviceLinkDeviceId : registeredDeviceId ?? undefined;
   const remoteHostId = deviceId ? null : ctx.remoteHostId;
   const isRemote = Boolean(remoteHostId) || Boolean(deviceId);
+  const documentVisible = useDocumentVisible();
+  const [windowHidden, setWindowHidden] = useState(isWindowHidden);
+  useEffect(() => window.electronAPI?.onWindowHiddenChange?.(setWindowHidden), []);
+  const visible = active !== false && shellVisible !== false && documentVisible && !windowHidden;
   // 设置页「显示被忽略的目录」开关(默认关)。进 useFileTree 的 store key →
   // 切换开关会换一份 store,listDir 与 watcher 都用新 matcher 重建,
   // 目录列表立即重新拉取(不需要用户手动刷新)。
   const { showIgnoredDirs } = useFileBrowserPreference();
-  const tree = useFileTree({ workdir, hideMetaFiles: true, remoteHostId, deviceId, showIgnoredDirs });
-  const fileContent = useFileContent(workdir, state.selectedFilePath, remoteHostId, deviceId);
+  const directory = state.currentDirectory ?? dirname(state.selectedFilePath ?? '');
+  const tree = useFileTree({
+    workdir, hideMetaFiles: true, remoteHostId, deviceId, showIgnoredDirs,
+    displayedDirectory: state.selectedFilePath ? undefined : directory, enabled: visible,
+  });
+  // 文件树按 Git 状态着色 + 「已更改」面板共用同一份只读数据源。
   const gitChanges = useWorkdirGitChanges(ctx.sessionId, workdir, deviceId);
   const xcode = useXcodeBuild({
     sessionId: ctx.sessionId,
     workdir,
-    enabled:
-      window.electronAPI.platform === 'darwin' &&
-      !isRemote,
+    enabled: visible && window.electronAPI.platform === 'darwin' && !isRemote,
   });
+  const [showChanges, setShowChanges] = useState(false);
+  const renderingHtml = !!state.selectedFilePath && state.previewHtmlPath === state.selectedFilePath
+    && isHtmlFilePath(state.selectedFilePath);
+  const fileContent = useFileContent(workdir, renderingHtml ? null : state.selectedFilePath, remoteHostId, deviceId, visible);
+  const [treeOpen, setTreeOpen] = useState(false);
+  const [previousEntry, setPreviousEntry] = useState<string | null>(null);
+  const [directoryFilter, setDirectoryFilter] = useState('');
+  const [grid, setGrid] = useState(false);
   const [externalFile, setExternalFile] = useState<ExternalFileSelection | null>(null);
   const [imageLightboxSrc, setImageLightboxSrc] = useState<string | null>(null);
-  const externalFileContent = useFileContent(externalFile?.workdir ?? workdir, externalFile?.relPath ?? null);
+  const externalFileContent = useFileContent(externalFile?.workdir ?? workdir, externalFile?.relPath ?? null, null, null, visible);
   const fileDragDepthRef = useRef(0);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const confirmSwitchAway = useConfirmSwitchAwayIfDirty();
@@ -183,7 +206,6 @@ function FileBrowserBodyWithWorkdir({
   // 文件名筛选 query —— tree 模式下用,独立于内容搜索。空 query 显示文件树,有
   // 内容显示筛选结果列表。不持久化(关 tab 重开默认空)。
   const [filterQuery, setFilterQuery] = useState('');
-  const [showChanges, setShowChanges] = useState(false);
   // 项目级文件名扁平列表(走 ripgrep --files honor .gitignore),给文件名筛选用。
   // 缓存 30 秒,跨 tab 共享同 workdir 索引;tree.refresh 时同步 invalidate。
   // remote:daemon 内跑远端 rg;远端没有 rg 时返回空 + error,走"未索引"占位。
@@ -191,7 +213,7 @@ function FileBrowserBodyWithWorkdir({
   // 不再为用不上的索引付 rg + IPC + 建索引的主线程成本。trim 与 filterFiles
   // 的匹配语义对齐:纯空格 query 结果必为空,不值得为它扫描。
   const projectFiles = useProjectFileList(workdir, remoteHostId, deviceId, {
-    enabled: filterQuery.trim() !== '',
+    enabled: visible && filterQuery.trim() !== '',
   });
   const filteredFiles = useMemo(
     () => filterFiles(filterQuery, projectFiles.files),
@@ -201,7 +223,7 @@ function FileBrowserBodyWithWorkdir({
     workdir,
     remoteHostId,
     deviceId,
-    query: searchQuery,
+    query: visible ? searchQuery : '',
     caseSensitive: searchCaseSensitive,
     maxMatches: SEARCH_MAX_MATCHES,
   });
@@ -246,20 +268,25 @@ function FileBrowserBodyWithWorkdir({
   const handleSelectFile = useCallback(
     async (relPath: string) => {
       // 切到同一文件 / 当前没有 active dirty editor → 直接放行;否则弹三选一。
-      const ok = await confirmSwitchAway(state.selectedFilePath, relPath);
+      const ok = await confirmSwitchAway(state.selectedFilePath, isHtmlFilePath(relPath) ? null : relPath);
       if (!ok) return;
       setExternalFile(null);
       ctx.patchState({
         selectedFilePath: relPath,
+        currentDirectory: directory,
+        previewHtmlPath: isHtmlFilePath(relPath) ? relPath : null,
         selectedFileLine: null,
         selectedFileAnchorToChange: false,
       });
     },
-    [confirmSwitchAway, ctx, state.selectedFilePath],
+    [confirmSwitchAway, ctx, directory, state.selectedFilePath],
   );
 
-  // 搜索结果点击 → 切回 tree 模式 + 选中该文件。搜索命中行号仍不跳转:
-  // 聊天文件链接的行锚定走 revealFileLine,这里保持"打开命中文件"主流程。
+  // 搜索结果点击 → 切回 tree 模式 + 选中该文件。
+  // RSB 版 plugin state 暂时只持有 selectedFilePath,没有 jumpLine / jumpQuery 字段
+  // (doc 模式靠 URL ?line= 跳行号、?search= 高亮命中),所以这里 lineNumber 暂时丢弃,
+  // 用户能定位到文件已经满足"项目级搜索 → 打开命中文件"主流程。
+  // Phase 后续如果有诉求,可扩展 FileBrowserState 持 jumpLine 字段。
   const handleOpenMatch = useCallback(
     async (relPath: string) => {
       const ok = await confirmSwitchAway(state.selectedFilePath, relPath);
@@ -267,41 +294,45 @@ function FileBrowserBodyWithWorkdir({
       setExternalFile(null);
       ctx.patchState({
         selectedFilePath: relPath,
+        currentDirectory: directory,
+        previewHtmlPath: null,
         selectedFileLine: null,
         selectedFileAnchorToChange: false,
       });
       setMode('tree');
     },
-    [confirmSwitchAway, ctx, state.selectedFilePath],
+    [confirmSwitchAway, ctx, directory, state.selectedFilePath],
   );
 
   // FileTreeView 的 imperative ref —— useRevealFileInTree 通过它调 scrollToPath。
   const fileTreeRef = useRef<FileTreeViewHandle>(null);
   const revealFileInTree = useRevealFileInTree(tree, fileTreeRef);
 
-  // 聊天目录 chip → openDirInSidebarFileBrowser 写入的一次性定位请求:切回 tree
-  // 视图、展开父目录并滚到该目录行、把目录本身也展开(用户意图是"看这个文件夹
-  // 里有什么")。消费后立即清空 transient 字段,tab 重挂载 / 会话切换不会重放。
+  // 从消息进入目录时立即展示这一层的内容；目录读取在原位呈现加载与错误状态。
   // nonce 进依赖:同一目录重复点击也重新触发。
   const revealDirPath = state.revealDirPath ?? null;
   const revealDirNonce = state.revealDirNonce ?? 0;
   useEffect(() => {
-    if (!revealDirPath) return;
+    if (!visible || !revealDirPath) return;
     let cancelled = false;
     void (async () => {
       setMode('tree');
       setFilterQuery('');
-      await revealFileInTree(revealDirPath);
-      if (cancelled) return;
-      if (!tree.expanded.has(revealDirPath)) tree.toggleFolder(revealDirPath);
+      if (!(await confirmSwitchAway(state.selectedFilePath, null)) || cancelled) {
+        if (!cancelled) ctx.patchState({ revealDirPath: null });
+        return;
+      }
+      void tree.expandToPath(revealDirPath, 'directory');
       setExternalFile(null);
-      ctx.patchState({ revealDirPath: null });
+      setDirectoryFilter('');
+      setPreviousEntry(null);
+      ctx.patchState({ revealDirPath: null, selectedFilePath: null, currentDirectory: revealDirPath, previewHtmlPath: null });
     })();
     return () => {
       cancelled = true;
     };
     // tree/ctx 引用变化不该重放已消费的请求。
-  }, [revealDirPath, revealDirNonce]);
+  }, [visible, revealDirPath, revealDirNonce]);
 
   // 聊天文件 chip → openFileInSidebarFileBrowser 写入的一次性定位请求:
   // 选中文件,切回 tree 视图,展开父目录并把文件行滚到视口中部。切换前仍走
@@ -310,13 +341,13 @@ function FileBrowserBodyWithWorkdir({
   const revealFileNonce = state.revealFileNonce ?? 0;
   const revealFileLine = state.revealFileLine ?? null;
   useEffect(() => {
-    if (!revealFilePath) return;
+    if (!visible || !revealFilePath) return;
     let cancelled = false;
     void (async () => {
       const ok = await confirmSwitchAway(state.selectedFilePath, revealFilePath);
       if (cancelled) return;
       if (!ok) {
-        ctx.patchState({ revealFilePath: null, revealFileLine: null });
+        ctx.patchState({ revealFilePath: null });
         return;
       }
       setMode('tree');
@@ -324,47 +355,26 @@ function FileBrowserBodyWithWorkdir({
       setExternalFile(null);
       ctx.patchState({
         selectedFilePath: revealFilePath,
+        currentDirectory: dirname(revealFilePath),
+        previewHtmlPath: null,
         selectedFileLine: revealFileLine,
         selectedFileAnchorToChange: revealFileLine === null,
       });
       await revealFileInTree(revealFilePath);
       if (cancelled) return;
-      ctx.patchState({ revealFilePath: null, revealFileLine: null });
+      ctx.patchState({ revealFilePath: null });
     })();
     return () => {
       cancelled = true;
     };
     // state/ctx/tree 引用变化不该重放已消费的请求。
-  }, [revealFilePath, revealFileNonce, revealFileLine]);
+  }, [visible, revealFilePath, revealFileNonce, revealFileLine]);
 
-  // 文件名筛选结果点击 → 选中文件 + 清空 query + 展开父目录 + 滚动到该行
-  // (回到正常文件树视图,跟用户直觉一致:"我找到这个文件了,接下来就在看它")。
-  // 展开 + 滚动逻辑封在 useRevealFileInTree,doc 模式 sidebar 共用同一份(以后
-  // 优化 reveal 行为只改 hook 一处)。
-  const handleSelectFromFilter = useCallback(
-    async (relPath: string) => {
-      const ok = await confirmSwitchAway(state.selectedFilePath, relPath);
-      if (!ok) return;
-      setExternalFile(null);
-      ctx.patchState({
-        selectedFilePath: relPath,
-        selectedFileLine: null,
-        selectedFileAnchorToChange: false,
-      });
-      setFilterQuery('');
-      // 等 filterQuery 清空 → tree 视图重新可见,然后 reveal 内部再两次 rAF
-      // 等 React commit / layout 稳定 → scroll。
-      void revealFileInTree(relPath);
-    },
-    [confirmSwitchAway, ctx, revealFileInTree, state.selectedFilePath],
-  );
-
-  // refresh 按钮:文件树 + 项目文件索引 + Git 状态一起 invalidate。
+  // refresh 按钮:文件树 + 项目文件索引一起 invalidate。
   const handleRefresh = useCallback(() => {
     void tree.refresh();
     projectFiles.refresh();
-    gitChanges.refresh();
-  }, [tree, projectFiles, gitChanges.refresh]);
+  }, [tree, projectFiles]);
 
   const handleCopyFilePath = useCallback(
     async (entry: DirEntry) => {
@@ -408,7 +418,7 @@ function FileBrowserBodyWithWorkdir({
   );
 
   const handleOpenInSidebarBrowser = useCallback(
-    async (entry: DirEntry) => {
+    async (entry: Pick<DirEntry, 'relPath'>, target: 'sidebar' | 'preference' = 'sidebar') => {
       await openHtmlFileByPreference(
         ctx.sessionId,
         toOsAbsolutePath(workdir, entry.relPath),
@@ -417,7 +427,7 @@ function FileBrowserBodyWithWorkdir({
           origin: resolveSessionFileOrigin(deviceId ?? undefined, remoteHostId),
           workingDir: workdir,
         },
-        'sidebar',
+        target === 'sidebar' ? 'sidebar' : undefined,
       );
     },
     [ctx.sessionId, workdir, deviceId, remoteHostId, t],
@@ -469,6 +479,8 @@ function FileBrowserBodyWithWorkdir({
         setFilterQuery('');
         ctx.patchState({
           selectedFilePath: localRelPath,
+          currentDirectory: directory,
+          previewHtmlPath: null,
           selectedFileLine: null,
           selectedFileAnchorToChange: false,
         });
@@ -489,11 +501,13 @@ function FileBrowserBodyWithWorkdir({
       setExternalFile(external);
       ctx.patchState({
         selectedFilePath: null,
+        currentDirectory: directory,
+        previewHtmlPath: null,
         selectedFileLine: null,
         selectedFileAnchorToChange: false,
       });
     },
-    [confirmSwitchAway, ctx, isRemote, revealFileInTree, state.selectedFilePath, t, workdir],
+    [confirmSwitchAway, ctx, directory, isRemote, revealFileInTree, state.selectedFilePath, t, workdir],
   );
 
   // 聊天文件 chip 的“在侧边栏文件浏览器中打开”可把 workdir 外本地文件写成
@@ -502,7 +516,7 @@ function FileBrowserBodyWithWorkdir({
   const externalFilePath = state.externalFilePath ?? null;
   const externalFileNonce = state.externalFileNonce ?? 0;
   useEffect(() => {
-    if (!externalFilePath) return;
+    if (!visible || !externalFilePath) return;
     let cancelled = false;
     void runExternalFileOpenRequest({
       absPath: externalFilePath,
@@ -514,7 +528,7 @@ function FileBrowserBodyWithWorkdir({
       cancelled = true;
     };
     // ctx / handler 引用变化不应重放已消费的请求；path / nonce 更新会取消旧请求。
-  }, [externalFilePath, externalFileNonce]);
+  }, [visible, externalFilePath, externalFileNonce]);
 
   const handleDrop = useCallback(
     (event: DragEvent<HTMLDivElement>) => {
@@ -616,10 +630,9 @@ function FileBrowserBodyWithWorkdir({
     : state.selectedFileLine
       ?? (state.selectedFileAnchorToChange ? firstLineInSet(activeChangedLines) : null);
   const handleJumpLineConsumed = useCallback(() => {
-    if (state.selectedFileAnchorToChange) {
-      ctx.patchState({ selectedFileAnchorToChange: false });
-    }
-  }, [ctx, state.selectedFileAnchorToChange]);
+    if (state.selectedFileLine != null) ctx.patchState({ selectedFileLine: null });
+    if (state.selectedFileAnchorToChange) ctx.patchState({ selectedFileAnchorToChange: false });
+  }, [ctx, state.selectedFileAnchorToChange, state.selectedFileLine]);
   useEffect(() => {
     if (!externalFile && activeContent.kind === 'text') gitChanges.scheduleRefresh();
   }, [activeContent, externalFile, gitChanges.scheduleRefresh]);
@@ -628,24 +641,45 @@ function FileBrowserBodyWithWorkdir({
   // 但 SSH 断链重连的间隙里 daemon 换代、事件会漏,窗口重新聚焦时静默刷新
   // 文件树 + 当前文件作为兜底,保证"断链期间远端改了文件 → 用户切回来能看到"。
   useEffect(() => {
-    if (!isRemote) return;
+    if (!visible || !isRemote) return;
     const onFocus = () => {
       void tree.refresh();
-      fileContent.refresh();
+      fileContent.refresh({ preserveEditor: true });
     };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
-  }, [isRemote, tree, fileContent]);
+  }, [visible, isRemote, tree, fileContent]);
 
   const handleToggleSearch = useCallback(() => {
     setMode((m) => (m === 'search' ? 'tree' : 'search'));
   }, []);
 
+  const projectName = basename(workdir.replace(/[\\/]+$/, '')) || workdir;
+  const directoryLabel = directory || projectName;
+  const stackedTree = containerWidth > 0 && containerWidth < 540;
+  const browseDirectory = useCallback(async (path: string) => {
+    if (!(await confirmSwitchAway(state.selectedFilePath, null))) return;
+    setPreviousEntry(activeRelPath ?? directory);
+    if (directory !== path) setDirectoryFilter('');
+    setExternalFile(null);
+    if (state.selectedFilePath || directory !== path) ctx.patchState({
+      selectedFilePath: null, currentDirectory: path, previewHtmlPath: null,
+      selectedFileLine: null, selectedFileAnchorToChange: false,
+    });
+    void tree.expandToPath(path, 'directory', !!activeRelPath);
+  }, [activeRelPath, confirmSwitchAway, ctx, directory, state.selectedFilePath, tree.expandToPath]);
+
+  const openFile = useCallback((relPath: string) => {
+    setPreviousEntry(relPath);
+    void handleSelectFile(relPath);
+  }, [handleSelectFile]);
+  const parentPath = activeRelPath ? directory : dirname(directory);
+
   return (
     <div
       ref={containerRef}
       className={cn(
-        'relative flex h-full min-h-0 w-full overflow-hidden',
+        'relative flex h-full min-h-0 w-full flex-col overflow-hidden',
         // 拖拽中全局禁用文本选中 + 强制 col-resize 光标(防止经过文件树/编辑器时
         // 光标跳变)。
         isTreeDragging && 'cursor-col-resize select-none',
@@ -656,190 +690,228 @@ function FileBrowserBodyWithWorkdir({
       onDragEnd={handleFileDragEnd}
       onDrop={handleDrop}
     >
-      {/* 左 pane:正文。所有文件(包括 markdown)走 FileBodyView(CodeMirror)以保
-          留 RSB 内编辑 / Ctrl+S 保存 / in-file 搜索能力 —— 2026-06-30 用户明确否
-          决"切只读 HTML"路径(那条路视觉 100% 对标 Codex 但不能编辑)。
-          视觉对标 Codex 走 FileBrowserBody.css 的 .rsb-fbody-compact scope CSS:
-          统一字号(13/14/12px)、密集 prose 节奏、系统 mono 字体栈、fence 灰底模拟 card,
-          做到 CSS 路径能达到的最大对标度。 */}
-      <div className="rsb-fbody-compact flex h-full min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="min-h-0 flex-1">
-          <FileBodyView
-            key={externalFile?.absPath ?? 'project-file-browser'}
-            workdir={activeWorkdir}
-            remoteHostId={externalFile ? null : remoteHostId}
-            deviceId={externalFile ? null : deviceId}
-            // 外部文件(externalFile)不属于会话,图片"发送到对话/标注"不适用。
-            sessionId={externalFile ? undefined : ctx.sessionId}
-            relPath={activeRelPath}
-            content={activeContent}
-            allowEdit={!externalFile}
-            changedLines={activeChangedLines}
-            jumpLine={jumpLine}
-            jumpLineNonce={externalFile ? undefined : state.revealFileNonce}
-            onJumpLineConsumed={handleJumpLineConsumed}
-            onSaved={
-              externalFile
-                ? undefined
-                : (data) => {
-                    fileContent.setLocal(data);
-                    gitChanges.refresh();
-                  }
-            }
-          />
-        </div>
-        {(xcode.loading || xcode.available || xcode.error || xcode.build) && (
-          <div className="shrink-0 border-t border-[var(--cmd-palette-border)]">
-            {xcode.build && xcode.outputExpanded && (
-              <XcodeBuildOutput
-                build={xcode.build}
-                output={xcode.output}
-                expanded
-                onToggle={xcode.toggleOutput}
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-default)] px-3 py-1.5">
+        <Button type="button" size="sm" compact variant={treeOpen ? 'primary' : 'secondary'}
+          aria-expanded={treeOpen} onClick={() => {
+            setTreeOpen(!treeOpen);
+            if (!treeOpen) void revealFileInTree((externalFile ? null : activeRelPath) ?? directory);
+          }}>
+          <FolderTree size={15} />
+          {t('ccAgent.workdirBrowse.projectTree')}
+        </Button>
+        {(directory || activeRelPath) && (
+          <Button type="button" size="xs" variant="secondary" tone="quiet" compact className="min-w-0 shrink"
+            title={parentPath || projectName} onClick={() => void browseDirectory(parentPath)}>
+            <ArrowLeft size={14} />
+            <span className="truncate">{basename(parentPath) || projectName}</span>
+          </Button>
+        )}
+        {!externalFile && activeRelPath && isHtmlFilePath(activeRelPath) && (
+          <Button size="xs" compact variant="secondary" className="ml-auto"
+            onClick={() => renderingHtml ? ctx.patchState({ previewHtmlPath: null }) : void handleSelectFile(activeRelPath)}>
+            {t(renderingHtml ? 'chat.markdownRenderer.viewSourceFile' : 'ccAgent.workdirBrowse.previewFile')}
+          </Button>
+        )}
+      </div>
+      <div className={cn('flex min-h-0 min-w-0 flex-1', stackedTree && 'flex-col')}>
+        {!activeRelPath ? (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            {tree.loadError || (!tree.entries.has(directory) && !tree.initialLoading && !tree.loadingPaths.has(directory)) ? (
+              <TreeLoadErrorPlaceholder kind={tree.loadError ?? 'load-failed'} onRetry={tree.refresh} />
+            ) : (
+              <DirectoryContents
+                key={directory}
+                directory={directoryLabel}
+                entries={tree.entries.get(directory)}
+                loading={tree.loadingPaths.has(directory) || tree.initialLoading}
+                grid={grid}
+                setGrid={setGrid}
+                filter={directoryFilter}
+                setFilter={setDirectoryFilter}
+                previousEntry={previousEntry}
+                localWorkdir={isRemote ? undefined : workdir}
+                onOpen={(entry) => entry.type === 'directory'
+                  ? void browseDirectory(entry.relPath) : openFile(entry.relPath)}
               />
             )}
-            {(xcode.loading || xcode.available || xcode.error) && (
-              <div className="flex h-8 items-center justify-end">
-                <XcodeBuildToolbar xcode={xcode} />
+          </div>
+        ) : (
+          <div className="rsb-fbody-compact flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            {renderingHtml && !externalFile ? <InlineHtmlPreview
+              key={JSON.stringify([activeRelPath, deviceId, remoteHostId])}
+              workdir={workdir} relPath={activeRelPath} remoteHostId={remoteHostId}
+              deviceId={deviceId}
+              sessionId={ctx.sessionId} tabId={ctx.tabId} active={visible}
+            /> : <FileBodyView
+              key={externalFile?.absPath ?? 'project-file-browser'}
+              visible={visible}
+              autosaveReady={fileContent.autosaveReady}
+              workdir={activeWorkdir}
+              remoteHostId={externalFile ? null : remoteHostId}
+              deviceId={externalFile ? null : deviceId}
+              // 外部文件(externalFile)不属于会话,图片"发送到对话/标注"不适用。
+              sessionId={externalFile ? undefined : ctx.sessionId}
+              relPath={activeRelPath}
+              content={activeContent}
+              allowEdit={!externalFile}
+              changedLines={activeChangedLines}
+              // 隐藏时先不传行号：隐藏容器里 CodeMirror 滚不动，会白跑掉一次性锚点。
+              jumpLine={visible ? jumpLine : null}
+              jumpLineNonce={state.revealFileNonce ?? 0}
+              onJumpLineConsumed={handleJumpLineConsumed}
+              onSaved={
+                externalFile
+                  ? undefined
+                  : (data) => {
+                      fileContent.setLocal(data);
+                      gitChanges.refresh();
+                    }
+              }
+            />}
+          </div>
+        )}
+        {/* 中间分割线 + resize handle —— 4px 命中宽度,内部 1px 实线;hover 高亮提示
+            可拖。双击复位到默认 200px。pointer-events 仅在 handle 上,不挡邻接 pane。
+            (语义对齐 RightSidebar 主壳 resize handle 的样式) */}
+        <div
+          className={cn("relative h-full w-px shrink-0 cursor-col-resize bg-[var(--border-default)]", (!treeOpen || stackedTree) && "hidden")}
+          onPointerDown={handleTreeDragStart}
+          onDoubleClick={resetTreeWidth}
+          role="separator"
+          aria-orientation="vertical"
+        >
+          <div className="absolute -left-1 top-0 h-full w-1 group/handle">
+            {/* hover 高亮:整条 1px 分割线变成 sidebar-action-icon 色调,跟主壳的 handle 视觉一致。 */}
+            <div
+              className={cn(
+                'absolute left-1 top-0 h-full w-px transition-colors',
+                isTreeDragging
+                  ? 'bg-sidebar-action-icon'
+                  : 'bg-transparent group-hover/handle:bg-sidebar-action-icon',
+              )}
+            />
+          </div>
+        </div>
+        {/* 右 pane:文件树 / 搜索 双模式 —— 拖拽宽度,跨 tab 共享持久化。
+            v1 不接 onNewFile / onDelete / onRename 等右键能力,只支持选中文件 —— RSB
+            这种狭窄面板里弹"新建文件 / 重命名"对话框体验差,doc 模式更合适。
+            tree / search 切换跟 doc 模式 sidebar 同 ergonomics:tree 模式显示文件树,
+            search 模式显示 SearchPanel(ripgrep 项目级搜索)。 */}
+        <div
+          className={cn('rsb-fbody-tree-pane flex min-h-0 shrink-0 flex-col overflow-hidden',
+            stackedTree && 'order-first border-b border-[var(--border-default)]', !treeOpen && 'hidden')}
+          style={stackedTree ? { height: '38%' } : { width: treeWidth }}
+        >
+          <TreeHeader
+            workdir={workdir}
+            onOpenRoot={() => void browseDirectory('')}
+            mode={mode}
+            onToggleSearch={handleToggleSearch}
+            onCollapseAll={tree.collapseAll}
+            onRefresh={handleRefresh}
+            ignoredDirsUnsupported={tree.showIgnoredDirsSupported === false}
+          />
+          {/* tree 模式:常驻文件名筛选输入框 + (筛选结果列表 / 文件树)。
+              注:className 必须**只在隐藏时**加 `hidden`,**不能**同时写 `block` ——
+              Tailwind 的 `block` 是 display:block,会覆盖 `flex`,容器不再是 flex 容器,
+              内部 `min-h-0 flex-1` 拿不到明确高度,FileTreeView 的 overflow-y-auto
+              就滚不动了(2026-06-30 用户实测 bug)。 */}
+          <div className={cn('flex min-h-0 flex-1 flex-col', mode !== 'tree' && 'hidden')}>
+            <FileFilterInput
+              value={filterQuery}
+              onChange={setFilterQuery}
+              changedOnly={showChanges}
+              onToggleChangedOnly={
+                ctx.sessionId ? () => setShowChanges((value) => !value) : undefined
+              }
+            />
+            {showChanges ? (
+              <ChangedFilesList
+                sessionId={ctx.sessionId}
+                deviceId={deviceId ?? null}
+                data={gitChanges.data}
+                changes={gitChanges.files}
+                query={filterQuery}
+                selectedPath={state.selectedFilePath}
+                loading={gitChanges.loading}
+                error={gitChanges.error}
+                onSelectFile={openFile}
+                onGitStateChanged={() => {
+                  gitChanges.refresh();
+                  void tree.refresh();
+                  projectFiles.refresh();
+                  fileContent.refresh();
+                  if (ctx.sessionId) {
+                    window.dispatchEvent(
+                      new CustomEvent('workdir-files-reverted', {
+                        detail: { workdir: ctx.workdir },
+                      }),
+                    );
+                  }
+                }}
+              />
+            ) : filterQuery ? (
+              <FilterResultList
+                files={filteredFiles}
+                truncated={
+                  // ripgrep cap 截断,或者前端展示上限截断(命中超过 FILTER_RESULT_LIMIT)
+                  projectFiles.truncated || filteredFiles.length >= FILTER_RESULT_LIMIT
+                }
+                isLoading={projectFiles.isLoading}
+                indexError={projectFiles.error}
+                selectedPath={state.selectedFilePath}
+                onSelectFile={(path) => {
+                  setFilterQuery('');
+                  openFile(path);
+                  void revealFileInTree(path);
+                }}
+              />
+            ) : tree.loadError && tree.entries.size === 0 ? (
+              <TreeLoadErrorPlaceholder kind={tree.loadError} onRetry={handleRefresh} />
+            ) : (
+              <div className="rsb-fbody-tree-scroll min-h-0 flex-1">
+                <FileTreeView
+                  ref={fileTreeRef}
+                  gitFiles={gitChanges.files}
+                  gitDirectories={gitChanges.directories}
+                  tree={tree}
+                  scrollScope={ctx.tabId}
+                  active={visible && treeOpen}
+                  selectedPath={state.selectedFilePath ?? directory}
+                  onSelectFolder={browseDirectory}
+                  onSelectFile={openFile}
+                  onPreviewImage={handlePreviewImage}
+                  onCopyFilePath={!isRemote ? handleCopyFilePath : undefined}
+                  onRevealInFolder={!isRemote ? handleRevealInFolder : undefined}
+                  onOpenInFileBrowser={ctx.sessionId ? handleOpenInFileBrowser : undefined}
+                  onOpenInSidebarBrowser={ctx.sessionId ? handleOpenInSidebarBrowser : undefined}
+                  onOpenInBrowser={handleOpenInBrowser}
+                />
               </div>
             )}
           </div>
-        )}
-      </div>
-      {/* 中间分割线 + resize handle —— 4px 命中宽度,内部 1px 实线;hover 高亮提示
-          可拖。双击复位到默认 200px。pointer-events 仅在 handle 上,不挡邻接 pane。
-          (语义对齐 RightSidebar 主壳 resize handle 的样式) */}
-      <div
-        className="relative h-full w-px shrink-0 cursor-col-resize bg-[var(--border-default)]"
-        onPointerDown={handleTreeDragStart}
-        onDoubleClick={resetTreeWidth}
-        role="separator"
-        aria-orientation="vertical"
-      >
-        <div className="absolute -left-1 top-0 h-full w-1 group/handle">
-          {/* hover 高亮:整条 1px 分割线变成 sidebar-action-icon 色调,跟主壳的 handle 视觉一致。 */}
-          <div
-            className={cn(
-              'absolute left-1 top-0 h-full w-px transition-colors',
-              isTreeDragging
-                ? 'bg-sidebar-action-icon'
-                : 'bg-transparent group-hover/handle:bg-sidebar-action-icon',
-            )}
-          />
-        </div>
-      </div>
-      {/* 右 pane:文件树 / 搜索 双模式 —— 拖拽宽度,跨 tab 共享持久化。
-          v1 不接 onNewFile / onDelete / onRename 等右键能力,只支持选中文件 —— RSB
-          这种狭窄面板里弹"新建文件 / 重命名"对话框体验差,doc 模式更合适。
-          tree / search 切换跟 doc 模式 sidebar 同 ergonomics:tree 模式显示文件树,
-          search 模式显示 SearchPanel(ripgrep 项目级搜索)。 */}
-      <div
-        className="rsb-fbody-tree-pane flex h-full shrink-0 flex-col overflow-hidden"
-        style={{ width: treeWidth }}
-      >
-        <TreeHeader
-          workdir={workdir}
-          mode={mode}
-          onToggleSearch={handleToggleSearch}
-          onCollapseAll={tree.collapseAll}
-          onRefresh={handleRefresh}
-          ignoredDirsUnsupported={tree.showIgnoredDirsSupported === false}
-        />
-        {/* tree 模式:常驻文件名筛选输入框 + (筛选结果列表 / 文件树)。
-            注:className 必须**只在隐藏时**加 `hidden`,**不能**同时写 `block` ——
-            Tailwind 的 `block` 是 display:block,会覆盖 `flex`,容器不再是 flex 容器,
-            内部 `min-h-0 flex-1` 拿不到明确高度,FileTreeView 的 overflow-y-auto
-            就滚不动了(2026-06-30 用户实测 bug)。 */}
-        <div className={cn('flex min-h-0 flex-1 flex-col', mode !== 'tree' && 'hidden')}>
-          <FileFilterInput
-            value={filterQuery}
-            onChange={setFilterQuery}
-            changedOnly={showChanges}
-            onToggleChangedOnly={
-              ctx.sessionId ? () => setShowChanges((value) => !value) : undefined
-            }
-          />
-          {showChanges ? (
-            <ChangedFilesList
-              sessionId={ctx.sessionId}
-              deviceId={deviceId}
-              data={gitChanges.data}
-              changes={gitChanges.files}
-              query={filterQuery}
-              selectedPath={state.selectedFilePath}
-              loading={gitChanges.loading}
-              error={gitChanges.error}
-              onSelectFile={handleSelectFile}
-              onGitStateChanged={() => {
-                gitChanges.refresh();
-                void tree.refresh();
-                projectFiles.refresh();
-                fileContent.refresh();
-                if (ctx.sessionId) {
-                  window.dispatchEvent(
-                    new CustomEvent('workdir-files-reverted', {
-                      detail: { workdir: ctx.workdir },
-                    }),
-                  );
-                }
-              }}
+          {/* search 模式:整个 body 替换为 ripgrep 内容搜索面板 */}
+          <div className={cn('min-h-0 flex-1', mode === 'search' ? 'block' : 'hidden')}>
+            <SearchPanel
+              query={searchQuery}
+              onQueryChange={setSearchQuery}
+              caseSensitive={searchCaseSensitive}
+              onCaseSensitiveChange={setSearchCaseSensitive}
+              results={search.results}
+              totalMatches={search.totalMatches}
+              totalFiles={search.totalFiles}
+              status={search.status}
+              errorMessage={search.errorMessage}
+              errorCode={search.errorCode}
+              maxMatches={SEARCH_MAX_MATCHES}
+              onOpenMatch={handleOpenMatch}
             />
-          ) : filterQuery ? (
-            <FilterResultList
-              files={filteredFiles}
-              truncated={
-                // ripgrep cap 截断,或者前端展示上限截断(命中超过 FILTER_RESULT_LIMIT)
-                projectFiles.truncated || filteredFiles.length >= FILTER_RESULT_LIMIT
-              }
-              isLoading={projectFiles.isLoading}
-              indexError={projectFiles.error}
-              selectedPath={state.selectedFilePath}
-              onSelectFile={handleSelectFromFilter}
-            />
-          ) : tree.loadError && tree.entries.size === 0 ? (
-            <TreeLoadErrorPlaceholder kind={tree.loadError} onRetry={handleRefresh} />
-          ) : (
-            <div className="rsb-fbody-tree-scroll min-h-0 flex-1">
-              <FileTreeView
-                ref={fileTreeRef}
-                tree={tree}
-                scrollScope={ctx.tabId}
-                active={active}
-                selectedPath={state.selectedFilePath}
-                gitFiles={gitChanges.files}
-                gitDirectories={gitChanges.directories}
-                onSelectFile={handleSelectFile}
-                onPreviewImage={handlePreviewImage}
-                onCopyFilePath={!isRemote ? handleCopyFilePath : undefined}
-                onRevealInFolder={!isRemote ? handleRevealInFolder : undefined}
-                onOpenInFileBrowser={ctx.sessionId ? handleOpenInFileBrowser : undefined}
-                onOpenInSidebarBrowser={ctx.sessionId ? handleOpenInSidebarBrowser : undefined}
-                onOpenInBrowser={handleOpenInBrowser}
-              />
-            </div>
-          )}
-        </div>
-        {/* search 模式:整个 body 替换为 ripgrep 内容搜索面板 */}
-        <div className={cn('min-h-0 flex-1', mode === 'search' ? 'block' : 'hidden')}>
-          <SearchPanel
-            query={searchQuery}
-            onQueryChange={setSearchQuery}
-            caseSensitive={searchCaseSensitive}
-            onCaseSensitiveChange={setSearchCaseSensitive}
-            results={search.results}
-            totalMatches={search.totalMatches}
-            totalFiles={search.totalFiles}
-            status={search.status}
-            errorMessage={search.errorMessage}
-            errorCode={search.errorCode}
-            maxMatches={SEARCH_MAX_MATCHES}
-            onOpenMatch={handleOpenMatch}
-          />
+          </div>
         </div>
       </div>
       {isDraggingFile && (
         <div
-          className="pointer-events-none absolute inset-2 z-20 rounded-xl border border-dashed border-[var(--drop-overlay-border)] bg-[var(--drop-overlay-bg)]"
+          className="pointer-events-none absolute inset-2 z-page-float rounded-xl border border-dashed border-[var(--drop-overlay-border)] bg-[var(--drop-overlay-bg)]"
           aria-hidden="true"
         />
       )}
@@ -869,6 +941,7 @@ function FileBrowserBodyWithWorkdir({
  */
 function TreeHeader({
   workdir,
+  onOpenRoot,
   mode,
   onToggleSearch,
   onCollapseAll,
@@ -876,6 +949,7 @@ function TreeHeader({
   ignoredDirsUnsupported,
 }: {
   workdir: string;
+  onOpenRoot: () => void;
   mode: TreeMode;
   onToggleSearch: () => void;
   onCollapseAll: () => void;
@@ -889,9 +963,11 @@ function TreeHeader({
 
   return (
     <div className="flex shrink-0 items-center justify-between pt-2 pb-1 pl-3 pr-2">
-      <span className="truncate text-sm font-semibold text-foreground" title={workdir}>
+      <Tip text={workdir}>
+      <button type="button" onClick={onOpenRoot} className="truncate text-sm font-semibold text-foreground hover:underline">
         {displayName}
-      </span>
+      </button>
+      </Tip>
       <div className="flex shrink-0 items-center gap-1.5">
         {/* 搜索 / 显示被忽略的目录 / 收起 / 刷新（搜索态只剩退出搜索）——
             与 doc 模式侧栏共用 FileTreeHeaderActions，不再各维护一份。 */}

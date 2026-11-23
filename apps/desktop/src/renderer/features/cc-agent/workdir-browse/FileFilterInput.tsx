@@ -17,6 +17,7 @@ import gitChangesIcon from '@/assets/giticon.svg';
 import { cn } from '@/lib/utils';
 
 export interface FileFilterInputProps {
+  placeholder?: string;
   value: string;
   onChange: (next: string) => void;
   changedOnly?: boolean;
@@ -26,6 +27,7 @@ export interface FileFilterInputProps {
 export function FileFilterInput({
   value,
   onChange,
+  placeholder,
   changedOnly = false,
   onToggleChangedOnly,
 }: FileFilterInputProps) {
@@ -48,7 +50,7 @@ export function FileFilterInput({
             type="text"
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            placeholder={t('rightSidebar.fileBrowser.filterPlaceholder')}
+            placeholder={placeholder ?? t('rightSidebar.fileBrowser.filterPlaceholder')}
             className={cn(
               'h-7 w-full rounded-lg border border-[var(--border-default)] bg-[var(--surface-elevated)]',
               'pl-7 pr-7 text-12 text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)]',

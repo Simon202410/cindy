@@ -52,7 +52,7 @@ const GRADIENT_REGISTRY: Record<string, { count: number; reason: string }> = {
   'features/right-sidebar/plugins/review/DiffViewer/ImageDiffPreview.tsx': { count: 4, reason: '透明底棋盘格，不是视觉渐变' },
   'styles/quota-tray.css': { count: 4, reason: 'Windows 托盘额度卡片：与 macOS 菜单栏面板相同的液柱玻璃槽，以及代替系统模糊材质的卡片背景（§2；2026-11-18 负责人裁决保留，PR #11277）' },
   'components/markdown/hexColorPicker.ts': { count: 2, reason: '取色器的饱和度/明度区与色相条（2026-11-09 登记）：HSV 两个维度只能由渐变表达' },
-  'styles/globals.css': { count: 15, reason: '字标扫光、折扣模型名的预算渐变（§2、§15.4）、列表与输入框的边缘渐隐遮罩（含桌面背景下消息列表底部的渐隐）、单色叠层' },
+  'styles/globals.css': { count: 39, reason: '字标扫光、折扣模型名的预算渐变（§2、§15.4）、列表与输入框的边缘渐隐遮罩（含桌面背景下消息列表底部的渐隐）、单色叠层、输入框停止按钮的 AI 工作发光（§2、§14.4；2026-11-18 负责人确认）' },
 };
 
 /** 这些是没有 Button 变体的裸按钮框，`enabled:hover:` 不会输给变体。 */

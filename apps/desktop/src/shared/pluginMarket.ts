@@ -1,6 +1,6 @@
 import type { DownloadProgress } from './downloadProgress';
 import type { GhostManifest, InstalledGhost } from './ghost';
-import type { GhostReadmeContent, PluginDownloadStatistics, PluginIconMetadata, PluginUsageStatistics } from '@cindy/plugin-protocol';
+import type { GhostReadmeContent, PluginCatalogCounts, PluginDownloadStatistics, PluginIconMetadata, PluginUsageStatistics } from '@cindy/plugin-protocol';
 
 export type PluginMarketScope = 'public' | 'organization' | 'personal';
 export type PluginMarketInstallState =
@@ -76,11 +76,7 @@ export interface PluginMarketQuery {
   /** Readers that only need items/cursors can omit the complete first-page count. */
   counts?: boolean;
 }
-export interface PluginMarketCounts {
-  all: number;
-  public: number;
-  organization: number;
-  personal: number;
+export interface PluginMarketCounts extends PluginCatalogCounts {
   custom: number;
 }
 export interface PluginMarketPage extends PluginMarketSnapshot {
@@ -255,4 +251,19 @@ export function parseCustomMarketPluginId(
  */
 export function customMarketReleaseId(marketName: string, ghostId: string, version: string): string {
   return `custom:${encodeURIComponent(marketName)}:${encodeURIComponent(ghostId)}:${encodeURIComponent(version)}`;
+}
+
+/** A task or button may offer one installation only when all configured
+ * sources resolve the requested identity to one available listing. */
+export function uniquePluginInstallCandidate(
+  market: PluginMarketSnapshot,
+  target: { ghostId: string; namespace?: string | null; marketPluginId?: string },
+): PluginMarketItem | undefined {
+  if (market.unavailableReason || market.organizationAccessError || market.unavailableCustomSourceNames?.length) return;
+  const matches = market.items.filter(item =>
+    item.ghostId === target.ghostId &&
+    (target.namespace === undefined || item.namespace === target.namespace) &&
+    (!target.marketPluginId || item.pluginId === target.marketPluginId),
+  );
+  if (matches.length === 1 && matches[0].installState === 'not-installed') return matches[0];
 }

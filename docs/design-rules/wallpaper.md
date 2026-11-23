@@ -24,6 +24,10 @@ syntax-highlighted code, such as code blocks and diffs (the fixed syntax palette
 web or editor content keep their readable opaque surfaces. Implementation: the in-page
 glass rule in `globals.css`, scoped to page containers and excluding floating roles and
 absolute / fixed / sticky surfaces; the floor comes from `useWallpaperBackground`.
+A sticky header filled with its own card's token (`.wallpaper-sticky-header`, such as the
+model list toolbar) stays clear over that glass card until it sticks over scrolled content,
+then takes back its opaque fill; elsewhere, and in browsers without `scroll-state` container
+queries, it keeps its fill unchanged.
 Desktop transparency uses this same rule and contrast floor, including its exclusions
 (user decision, 2026-11-08). Do not duplicate per-control styles by background source.
 At zero desktop transparency, keep raised surfaces fully opaque. The sidebar's own
@@ -195,7 +199,7 @@ visible and shows an actionable error in wallpaper settings. The custom video ti
 instead of opening a second decoder for a thumbnail.
 Wallpaper Visibility ranges from 0% (hidden) to 100% (fully visible), in 1% steps
 (user decision, 2026-10-05). Static images use the theme-surface veil with opacity equal to
-100% minus visibility. Video uses visibility directly as the video element's opacity over
+100% minus visibility. Video uses visibility directly as the displayed frame's opacity over
 an opaque theme-surface backing, without a separate translucent veil; this avoids the
 observed Windows HDR brightness shift when P3 content changes the output composition.
 The video wrapper's opacity is reserved for loading/exit crossfades. Visibility never fades
@@ -204,7 +208,7 @@ and no element opacity is layered on top. Release video playback at 0%. Blend-mo
 remain out of scope.
 Optional Wallpaper Blur (user addition, 2026-10-06) ranges from 0 (off, default) to 20
 in whole steps, applying a CSS-pixel radius only to the wallpaper image/video. No UI,
-theme backing, or text is blurred; video opacity remains on the video itself. At zero,
+theme backing, or text is blurred; opacity remains on the displayed video frame. At zero,
 retain the existing filter-free rendering path. Overscan the artwork by three radii
 and clip the video at the viewport to avoid transparent edges; static and video crops
 must match. For blurred static scenes, reuse the moving-scene message fade instead
@@ -237,8 +241,9 @@ in the existing client-wallpaper media scope. Valid cached content is reused acr
 restarts, upgrades and accounts without another download; failures retain the preview
 and permit retry. The download and cache contract is defined in
 [`media-storage-and-protocols.md`](../dev-rules/media-storage-and-protocols.md).
-Decode one local video
-per window, suspend playback while hidden/minimized, and use the original still for
+Decode one local video per window and suspend playback while hidden/minimized. On macOS,
+keep the decoder out of layout and display its frames on a canvas so the wallpaper does
+not hold the display awake. Use the original still for
 reduced motion or playback failure. Static / Dynamic switches crossfade the video
 over the retained high-resolution still using fast/ease-move (150ms, the same pair as the
 still-image crossfade; maintainer ruling D-11, 2026-11-11), starting
