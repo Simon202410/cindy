@@ -367,6 +367,13 @@ export function MainLayout() {
   const [rightSidebarSubagentsAvailable, setRightSidebarSubagentsAvailable] = useState<
     boolean | undefined
   >(undefined);
+  // 聊天路由切换时，旧视图先卸载、新视图可能还在懒加载/校验；这段空窗不能把
+  // 右栏声明成不可用或无会话，否则面板会收起再展开、内容重建。
+  const isChatRouteRef = useRef(false);
+  const setRightSidebarAvailableStable = useCallback((available: boolean) => {
+    if (!available && isChatRouteRef.current) return;
+    setRightSidebarAvailable(available);
+  }, []);
   const rightSidebarSessionIdRef = useRef(rightSidebarSessionId);
   rightSidebarSessionIdRef.current = rightSidebarSessionId;
   const detachedHostSessionIdRef = useRef<string | null>(null);
@@ -377,6 +384,7 @@ export function MainLayout() {
   const navigateToSessionRef = useRef<(sessionId: string) => void>(() => undefined);
   const declareRightSidebarSessionId = useCallback(
     (sessionId: string | null, opts: RightSidebarSessionDeclarationOptions = {}) => {
+      if (sessionId === null && isChatRouteRef.current) return;
       // 先比较再写 ref：同一会话的重复声明不能把用户刚手动开关的状态重置回默认。
       const sameSession = rightSidebarSessionIdRef.current === sessionId;
       rightSidebarSessionIdRef.current = sessionId;
@@ -508,6 +516,10 @@ export function MainLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
+  isChatRouteRef.current = Boolean(
+    resolveAgentIslandVisibleSessionIdFromPath(location.pathname) ||
+    companionChatTarget(location.pathname, location.search),
+  );
 
   useEffect(() => {
     syncNotificationsEnabledToMain();
@@ -1805,12 +1817,12 @@ export function MainLayout() {
     rightSidebarCollapsed: rsbDetached || isRightSidebarCollapsed,
     onToggleRightSidebar: handleOpenRightSidebar,
     rightSidebarSide,
-    setRightSidebarAvailable,
+    setRightSidebarAvailable: setRightSidebarAvailableStable,
     setRightSidebarSessionId: declareRightSidebarSessionId,
     setRightSidebarWorkdir,
   }), [
     sidebarWidth, pluginSettings, rsbDetached, isRightSidebarCollapsed, handleOpenRightSidebar,
-    rightSidebarSide, declareRightSidebarSessionId, setRightSidebarWorkdir,
+    rightSidebarSide, declareRightSidebarSessionId, setRightSidebarAvailableStable, setRightSidebarWorkdir,
   ]);
 
   return (
