@@ -101,6 +101,7 @@ import { rewriteToRemoteMediaOrigin, type RemoteMediaOrigin } from '../../../sha
 import { useChatSessionFile } from './ChatSessionFileContext';
 import { toRemoteMediaOrigin } from '@/lib/sessionFileOrigin';
 import { toast } from '@/lib/toast';
+import { mapIpcErrorToI18nKey } from '@/utils/ipcError';
 import { shouldOpenTextLightboxForOrigin } from '@/lib/filePreview';
 import { isTextPreviewSupported } from '@/lib/textPreview';
 import { isRemoteFileOrigin, type SessionFileOrigin } from '@/lib/sessionFileOrigin';
@@ -933,12 +934,14 @@ function LightboxImage({
   alt,
   onZoom,
   streaming = false,
+  allowLocalFileOpen = false,
   ...props
 }: {
   src?: string;
   alt?: string;
   onZoom: (src: string) => void;
   streaming?: boolean;
+  allowLocalFileOpen?: boolean;
   [key: string]: unknown;
 }) {
   const { t } = useTranslation();
@@ -949,6 +952,14 @@ function LightboxImage({
 
   const { canCopy, canReveal: canRevealInFolder, copyImage, revealImage } = useImageClipboard(src ?? '');
   const showMenu = canCopy || canRevealInFolder;
+
+  async function openLocalImage(url: string): Promise<void> {
+    try {
+      await window.electronAPI.openMediaWithDefaultApp({ url });
+    } catch (error) {
+      toast.error(t(mapIpcErrorToI18nKey(error, { fallback: 'chat.media.openWithAppFailed' })));
+    }
+  }
 
   // image-local-cache F4: when the underlying file is missing (cache cleared,
   // xdt-image:// 404, etc.), swap to the friendly placeholder card. The
@@ -961,6 +972,9 @@ function LightboxImage({
         filename={alt || fallbackName}
         status={imageStatus}
         onRetry={canRetry ? retry : undefined}
+        onOpen={allowLocalFileOpen && src?.startsWith('xdt-file://')
+          ? () => void openLocalImage(src)
+          : undefined}
       />
     );
   }
@@ -2002,6 +2016,7 @@ const MarkdownRendererBase = memo(function MarkdownRendererBase({
                   alt={alt}
                   onZoom={setLightboxSrc}
                   {...imageProps}
+                  allowLocalFileOpen={resolveMediaInWorkspace && !mediaOrigin}
                 />
               );
             }}

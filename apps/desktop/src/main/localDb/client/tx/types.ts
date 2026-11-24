@@ -66,6 +66,7 @@ export type DbTxName =
   | 'bots.createThreadLane'
   | 'bots.createTaskPartnerLane'
   | 'bots.archiveChannelLanes'
+  | 'bots.pruneEmptyLegacyRoutineHistory'
   | 'botGroups.create'
   | 'botGroups.setMembers'
   | 'botGroups.delete'
@@ -149,6 +150,8 @@ export interface SessionTreeRehydrateArgs {
 }
 
 export interface ForkSessionArgs {
+  /** Reject edits to the ordered history selected before the native fork awaited. */
+  sourceMessagesDigest?: string;
   sourceSessionId: string;
   /** /clear 之前的行不属于当前可见/原生上下文，fork 时不得重新带回。 */
   sourceClearedAt?: number | null;
@@ -1399,6 +1402,7 @@ export type DbTxArgsByName = {
   'bots.createThreadLane': BotsCreateThreadLaneArgs;
   'bots.createTaskPartnerLane': BotsCreateChannelLaneArgs;
   'bots.archiveChannelLanes': BotsArchiveChannelLanesArgs;
+  'bots.pruneEmptyLegacyRoutineHistory': { neverDispatchedSessionIds: string[] };
   'botGroups.create': BotGroupsCreateArgs;
   'botGroups.setMembers': BotGroupsSetMembersArgs;
   'botGroups.delete': BotGroupsDeleteArgs;
@@ -1502,6 +1506,7 @@ export type DbTxResultByName = {
   'bots.createThreadLane': BotGroupsCreateLaneResult;
   'bots.createTaskPartnerLane': BotGroupsCreateLaneResult;
   'bots.archiveChannelLanes': { archivedSessionIds: string[] };
+  'bots.pruneEmptyLegacyRoutineHistory': { removed: number; botIds: string[] };
   'botGroups.create': undefined;
   'botGroups.setMembers': BotGroupsSetMembersResult;
   'botGroups.delete': { archivedSessionIds: string[] };
