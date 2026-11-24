@@ -196,8 +196,12 @@ const RSB_TERRITORY_SELECTOR = '[data-panel-drag-root="right-tabs"], [data-rsb-t
  */
 function readCollapsedFor(sessionId: string | null, defaultOpen: boolean): boolean {
   if (!sessionId) return true;
-  if (window.electronAPI?.platform === 'darwin') return !defaultOpen;
-  return readPanelCollapsed('right-tabs', { sessionId }, true);
+  const stored = readPanelCollapsed('right-tabs', { sessionId }, true);
+  // macOS 主窗按常驻偏好决定默认值，但用户显式展开过的任务必须优先。
+  if (window.electronAPI?.platform === 'darwin' && !isSecondaryWindow()) {
+    return stored === false ? false : !defaultOpen;
+  }
+  return stored;
 }
 
 function writeCollapsedFor(sessionId: string | null, collapsed: boolean): void {
@@ -373,6 +377,8 @@ export function MainLayout() {
   const navigateToSessionRef = useRef<(sessionId: string) => void>(() => undefined);
   const declareRightSidebarSessionId = useCallback(
     (sessionId: string | null, opts: RightSidebarSessionDeclarationOptions = {}) => {
+      // 先比较再写 ref：同一会话的重复声明不能把用户刚手动开关的状态重置回默认。
+      const sameSession = rightSidebarSessionIdRef.current === sessionId;
       rightSidebarSessionIdRef.current = sessionId;
       detachedHostSessionIdRef.current = nextDetachedHostAfterFocus(
         detachedHostSessionIdRef.current,
@@ -382,6 +388,7 @@ export function MainLayout() {
       setRightSidebarSubagentsAvailable(sessionId ? opts.subagentsAvailable : undefined);
       if (!sessionId || !rsbWindow.loaded || rsbDetached) return;
       const hasInitialCollapsed = typeof opts.initialCollapsed === 'boolean';
+      if (sameSession && !hasInitialCollapsed) return;
       const nextCollapsed = hasInitialCollapsed
         ? opts.initialCollapsed === true
         : readCollapsedFor(sessionId, defaultRightSidebarOpenRef.current);
