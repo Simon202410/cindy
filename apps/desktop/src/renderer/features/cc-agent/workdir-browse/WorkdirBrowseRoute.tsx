@@ -193,8 +193,7 @@ function WorkdirBrowseContent({ requestedDeviceId }: { requestedDeviceId: string
     enabled:
       window.electronAPI.platform === 'darwin' &&
       !remoteHostId &&
-      deviceId === null &&
-      !currentSession?.agentDeviceId,
+      deviceId === null,
   });
   const changedLines = selectedPath ? gitChanges.changedLines.get(selectedPath) : undefined;
   useEffect(() => {

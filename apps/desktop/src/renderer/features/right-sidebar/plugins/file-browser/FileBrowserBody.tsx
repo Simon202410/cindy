@@ -776,6 +776,23 @@ function FileBrowserBodyWithWorkdir({
                       }
                 }
               />}
+              {(xcode.loading || xcode.available || xcode.error || xcode.build) && (
+                <div className="shrink-0 border-t border-[var(--cmd-palette-border)]">
+                  {xcode.build && xcode.outputExpanded && (
+                    <XcodeBuildOutput
+                      build={xcode.build}
+                      output={xcode.output}
+                      expanded
+                      onToggle={xcode.toggleOutput}
+                    />
+                  )}
+                  {(xcode.loading || xcode.available || xcode.error) && (
+                    <div className="flex h-8 items-center justify-end">
+                      <XcodeBuildToolbar xcode={xcode} />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
