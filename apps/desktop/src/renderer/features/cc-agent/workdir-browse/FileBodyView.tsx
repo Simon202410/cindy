@@ -1244,7 +1244,7 @@ export const FileBodyView = forwardRef<FileBodyHandle, FileBodyViewProps>(functi
                   );
                 }}
                 className={cn(
-                  'flex h-7 w-full items-center rounded-md px-2.5 text-left',
+                  'flex h-7 w-full items-center rounded-lg px-2.5 text-left',
                   'text-13 leading-none text-[var(--msg-assistant-text)]',
                   'hover:bg-[var(--cmd-palette-item-hover)] focus:bg-[var(--cmd-palette-item-hover)] focus:outline-none',
                 )}
@@ -1266,7 +1266,7 @@ export const FileBodyView = forwardRef<FileBodyHandle, FileBodyViewProps>(functi
                   void writeToDisk();
                 }}
                 className={cn(
-                  'flex h-7 w-full items-center rounded-md px-2.5 text-left',
+                  'flex h-7 w-full items-center rounded-lg px-2.5 text-left',
                   'text-13 leading-none text-[var(--msg-assistant-text)]',
                   'hover:bg-[var(--cmd-palette-item-hover)] focus:bg-[var(--cmd-palette-item-hover)] focus:outline-none',
                   'disabled:pointer-events-none disabled:opacity-45',
