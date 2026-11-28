@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ReviewData, ReviewFileTarget } from '@/lib/gitReview.types';
+import type { ReviewHistoryData } from '../../../../../shared/gitReviewWire';
 import { buildDeterministicCommitMessage } from '../../../../../shared/gitCommitMessage';
 import { ChangedFilesList } from '../ChangedFilesList';
 import type { WorkdirGitFileChange } from '../lib/workdirGitStatus';
@@ -114,10 +115,12 @@ const stageAll = vi.fn(
     };
   },
 );
-const history = vi.fn(async (_params: { sessionId: string; limit?: number }) => {
-  void _params;
-  return { scope: {} as never, commits: [], upstreamOid: null };
-});
+const history = vi.fn(
+  async (_params: { sessionId: string; limit?: number }): Promise<ReviewHistoryData> => {
+    void _params;
+    return { scope: {} as never, commits: [], upstreamOid: null };
+  },
+);
 const pull = vi.fn(async (_params: { sessionId: string }) => {
   void _params;
   return { data: {} as ReviewData, stdout: '', stderr: '' };
