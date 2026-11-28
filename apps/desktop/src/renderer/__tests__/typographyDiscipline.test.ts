@@ -457,8 +457,7 @@ const INLINE_SIZE_DEBT: Exemption[] = [
   // CodeMirror 编辑器主题(CSS-in-JS):编辑区基础字号与图片/Mermaid 错误提示的 px 字面量,
   // 同样不随 UI 字号缩放;em 相对的内容标题层级不在此列(§3 豁免表)。
   inlineSizeDebt('src/renderer/components/markdown/codemirrorGithubTheme.ts', {
-    'fontSize …16': 1,
-    'fontSize …15': 1,
+    // 15 / 16 已随「编辑器字号」改成 var(--app-editor-font-size, …)，字面量归零后按规矩下调基线。
     'fontSize …13': 2,
     'fontSize …12': 2,
   }),

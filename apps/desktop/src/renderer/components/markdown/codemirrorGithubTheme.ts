@@ -251,7 +251,7 @@ function makeEditorTheme(c: typeof githubLightColors, isDark: boolean) {
         boxSizing: 'border-box',
         color: 'var(--text-secondary)',
         fontFamily: UI_FONT_STACK,
-        fontSize: '10px',
+        fontSize: 'var(--text-10)',
         fontWeight: '500',
         lineHeight: '12px',
         overflow: 'hidden',
